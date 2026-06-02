@@ -1,0 +1,17 @@
+[package]
+name = "kompass-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+futures = "0.3.32"
+k8s-openapi = { version = "0.27.1", features = ["latest"] }
+kube = { version = "3.1.0", features = ["client", "runtime", "ws", "derive"] }
+portable-pty = "0.9.0"
+serde = "1.0.228"
+serde_json = "1.0.150"
+serde_yaml = "0.9.34"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
+tracing = "0.1.44"

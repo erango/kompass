@@ -1,0 +1,85 @@
+/* ============================================================
+   KOMPASS — nav: expandable categories, sub-item guide rail,
+   current indicator, default-boot-page pin + set affordance.
+   Ported from the design app.css nav block + nav-default.css.
+   ============================================================ */
+.nav-group { display: flex; flex-direction: column; }
+.nav-parent .chev {
+  margin-left: auto; width: 13px; height: 13px; color: var(--fg-faint); flex: none;
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+.nav-group.open > .nav-parent .chev { transform: rotate(90deg); }
+.nav-group.open > .nav-parent { color: var(--fg-default); }
+
+.nav-sub { position: relative; display: none; flex-direction: column; gap: 0; margin: 1px 0 5px; }
+.nav-group.open > .nav-sub { display: flex; }
+.nav-subitem {
+  position: relative; display: flex; align-items: center; gap: var(--sp-4);
+  height: 29px; padding: 0 var(--sp-4) 0 36px; border-radius: var(--radius-md);
+  font-size: var(--text-small); color: var(--fg-muted); cursor: pointer;
+  white-space: nowrap; transition: background var(--dur-fast), color var(--dur-fast);
+}
+/* Guide rail — drawn per row so it shares the row's own positioning
+   context with the active accent below; the segments stack into one line. */
+.nav-subitem::before {
+  content: ''; position: absolute; left: 16px; top: 0; bottom: 0; width: 1px;
+  background: var(--border-strong);
+}
+.nav-subitem:first-child::before { top: 2px; }
+.nav-subitem:last-child::before { bottom: 4px; }
+.nav-subitem:hover { background: var(--bg-raised); color: var(--fg-default); }
+.nav-subitem.active { background: var(--accent-tint); color: var(--fg-strong); font-weight: var(--fw-medium); }
+/* active child lights its segment of the rail in the accent (same left:16px) */
+.nav-subitem.active::after {
+  content: ''; position: absolute; left: 16px; top: 6px; bottom: 6px; width: 2px;
+  background: var(--accent); border-radius: 2px;
+}
+
+/* ---- Right-edge cluster: [set-pin?] [def-pin?] [count?] ---- */
+.nav-item .nav-right, .nav-subitem .nav-right {
+  margin-left: auto; display: flex; align-items: center; gap: var(--sp-3); flex: none;
+}
+.nav-right .count { margin-left: 0; line-height: 1; }
+.nav-right { line-height: 1; }
+
+/* ---- The default indicator: a filled accent home (read-only marker;
+   clearing the default is done via the right-click menu) ---- */
+.def-pin {
+  width: 16px; height: 16px; flex: none; display: inline-flex;
+  align-items: center; justify-content: center; color: var(--accent-fg);
+  position: relative;
+}
+.def-pin svg {
+  width: 14px; height: 14px;
+  fill: var(--accent-fg); stroke: var(--accent-fg); stroke-width: 1;
+  stroke-linejoin: round; position: relative; top: -1px;
+}
+/* calm 600ms arrival, never a flash (plays once when the pin mounts) */
+@keyframes pin-settle {
+  0% { opacity: 0; transform: translateY(-1px) scale(0.55); }
+  55% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.def-pin.settling svg { animation: pin-settle var(--dur-settle) var(--ease-out); transform-origin: 50% 70%; }
+
+/* ---- Set affordance: hover-reveal ghost pin button ---- */
+.set-pin {
+  width: 20px; height: 20px; flex: none; border: none; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border-radius: var(--radius-sm);
+  color: var(--fg-faint); cursor: pointer; opacity: 0; transform: scale(0.9);
+  transition: opacity var(--dur-fast) var(--ease-standard),
+              transform var(--dur-fast) var(--ease-standard),
+              background var(--dur-fast), color var(--dur-fast);
+}
+.set-pin svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+.nav-item:hover .set-pin, .nav-subitem:hover .set-pin, .set-pin:focus-visible {
+  opacity: 1; transform: scale(1);
+}
+.set-pin:hover { background: var(--accent-tint); color: var(--accent-fg); }
+.set-pin:focus-visible { outline: none; box-shadow: var(--shadow-focus); opacity: 1; }
+
+/* Pins sit at the nav's right edge — right-anchor their tooltips so they
+   open leftward instead of overflowing into the content pane. */
+.nav .tip::after { left: auto; right: 0; transform: translateX(0) translateY(-4px); }
+.nav .tip:hover::after { transform: translateX(0) translateY(0); }

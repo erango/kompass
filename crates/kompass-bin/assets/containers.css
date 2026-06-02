@@ -1,0 +1,75 @@
+/* ============================================================
+   KOMPASS — Per-container status squares
+   Reusable across the resource table cell and the detail panel.
+   No new hues: every color resolves to an existing --status-* token.
+   ============================================================ */
+.csqs { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
+.csq-grp { display: inline-flex; align-items: center; gap: 3px; }
+.csq-sep { width: 1px; height: 11px; background: var(--border-strong); margin: 0 3px; flex: none; border-radius: 1px; }
+
+.csq-wrap { position: relative; display: inline-flex; }
+.csq {
+  width: 9px; height: 9px; border-radius: var(--radius-sm); flex: none;
+  background: var(--status-neutral); cursor: default;
+  /* Calm rule: state changes settle over 600ms, never flash. */
+  transition: background var(--dur-settle) var(--ease-out),
+              box-shadow var(--dur-settle) var(--ease-out);
+}
+.csq:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent-ring); }
+.csq-lg { width: 13px; height: 13px; border-radius: var(--radius-sm); }
+
+.csq--running  { background: var(--status-running); }
+/* running but failing readiness → outline reads as "present, not serving" */
+.csq--notready { background: var(--status-running-tint); box-shadow: inset 0 0 0 1.5px var(--status-running); }
+.csq--pending  { background: var(--status-pending); }
+.csq--failed   { background: var(--status-failed); }
+.csq--neutral  { background: var(--status-neutral); }
+
+/* +N roll-up chip — carries the worst hidden state's color so problems never hide */
+.csq-more {
+  height: 12px; padding: 0 4px; border-radius: var(--radius-sm);
+  display: inline-flex; align-items: center; font-family: var(--font-mono);
+  font-size: 9px; line-height: 1; font-weight: var(--fw-medium); color: var(--fg-muted);
+  background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--border-default);
+  margin-left: 1px;
+}
+.csq-more.worst-notready { color: var(--status-running); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--status-running) 45%, transparent); }
+.csq-more.worst-pending  { color: var(--status-pending); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--status-pending) 50%, transparent); background: var(--status-pending-tint); }
+.csq-more.worst-failed   { color: var(--status-failed);  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--status-failed) 55%, transparent);  background: var(--status-failed-tint); }
+
+/* ---- Rich tooltip: name + state + restarts. Drops BELOW (clears the row above). ---- */
+.cqtip {
+  position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(-4px);
+  display: flex; flex-direction: column; gap: 3px; min-width: 132px;
+  background: var(--bg-overlay); border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--sp-4) var(--sp-5); box-shadow: var(--shadow-md); z-index: 60;
+  opacity: 0; pointer-events: none; white-space: nowrap;
+  transition: opacity var(--dur-fast), transform var(--dur-fast);
+}
+.csq-wrap:hover .cqtip, .csq:focus-visible + .cqtip, .csq-wrap.force .cqtip {
+  opacity: 1; transform: translateX(-50%) translateY(0);
+}
+.tip-start .cqtip { left: 0; transform: translateX(-2px) translateY(-4px); }
+.tip-start:hover .cqtip, .tip-start.force .cqtip { transform: translateX(-2px) translateY(0); }
+
+/* Flip above the squares when there isn't room below (set on hover by JS). */
+.csq-wrap.flip-up .cqtip { top: auto; bottom: calc(100% + 8px); transform: translateX(-50%) translateY(4px); }
+.csq-wrap.flip-up:hover .cqtip, .csq-wrap.flip-up.force .cqtip { transform: translateX(-50%) translateY(0); }
+.tip-start.flip-up .cqtip { transform: translateX(-2px) translateY(4px); }
+.tip-start.flip-up:hover .cqtip, .tip-start.flip-up.force .cqtip { transform: translateX(-2px) translateY(0); }
+.csq-wrap.flip-up .cq-caret { top: 100%; bottom: auto; rotate: 225deg; margin-top: -4px; margin-bottom: 0; }
+.cqtip .cq-name { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--fg-strong); font-weight: var(--fw-medium); display: flex; align-items: center; gap: 6px; }
+.cqtip .cq-kind { font-family: var(--font-sans); font-size: 9px; letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; color: var(--fg-faint); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 4px; line-height: 14px; }
+.cqtip .cq-state { display: flex; align-items: center; gap: 6px; font-size: var(--text-micro); color: var(--fg-default); }
+.cqtip .cq-state i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.cqtip .cq-rs { font-size: var(--text-micro); color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.cqtip .cq-caret { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); width: 8px; height: 8px; background: var(--bg-overlay); border-left: 1px solid var(--border-default); border-top: 1px solid var(--border-default); rotate: 45deg; margin-bottom: -4px; }
+.tip-start .cq-caret { left: 6px; }
+
+/* ---- Detail-panel container card: square + restart count inline in the head ---- */
+.ctr-head .csqs { margin-right: 1px; }
+.ctr-head .ctr-name { white-space: nowrap; }
+.ctr-head .ctr-rs { margin-left: auto; flex: none; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ctr-head .ctr-rs .lbl { color: var(--fg-faint); text-transform: uppercase; letter-spacing: var(--tracking-eyebrow); font-size: 9px; }
+.ctr-head .ctr-rs .rsv { font-size: var(--text-small); font-weight: var(--fw-medium); color: var(--fg-default); }
+.ctr-head .ctr-rs.warn .rsv { color: var(--status-pending); }

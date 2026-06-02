@@ -1,0 +1,253 @@
+/* ============================================================
+   KOMPASS — Design Tokens
+   Dual theme (dark default + light), WCAG AA in both.
+   No raw hex in components: everything resolves to a var() here.
+   ============================================================ */
+
+/* ---- Fonts ---- */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ============ TYPOGRAPHY ============ */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Tight type scale. Type does the heavy lifting; weight + color + size carry hierarchy. */
+  --text-display: 34px;   /* overview big numbers */
+  --text-title:   20px;   /* screen titles */
+  --text-heading: 15px;   /* section headings, panel titles */
+  --text-body:    13px;   /* UI default */
+  --text-small:   12px;   /* table secondary, dense rows */
+  --text-micro:   11px;   /* labels, captions, eyebrows */
+
+  --lh-tight: 1.15;
+  --lh-snug:  1.35;
+  --lh-base:  1.5;
+
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+
+  --tracking-eyebrow: 0.06em;  /* uppercase micro labels */
+  --tracking-tight: -0.01em;   /* display & titles */
+
+  /* ============ SPACING (base 4px) ============ */
+  --sp-0: 0px;
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 20px;
+  --sp-8: 24px;
+  --sp-9: 32px;
+  --sp-10: 40px;
+  --sp-11: 48px;
+  --sp-12: 64px;
+
+  /* Comfortable density (v1). Compact mode would only override these three. */
+  --row-h: 44px;          /* table row height */
+  --control-h: 30px;      /* buttons, inputs, selects */
+  --control-h-sm: 24px;   /* chips, small toggles */
+
+  /* ============ RADIUS ============ */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* ============ MOTION ============ */
+  --dur-instant: 80ms;
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+  --dur-settle: 600ms;   /* freshness fade / live-data settle */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ============ Z ============ */
+  --z-nav: 10;
+  --z-topbar: 20;
+  --z-panel: 30;
+  --z-overlay: 80;
+  --z-palette: 90;
+  --z-toast: 100;
+}
+
+/* ============================================================
+   DARK THEME (default) — cool neutral, premium near-black
+   ============================================================ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Backgrounds: 4 elevation layers */
+  --bg-base:    oklch(0.155 0.004 265);  /* app canvas, deepest */
+  --bg-surface: oklch(0.190 0.005 265);  /* content panels, table */
+  --bg-raised:  oklch(0.225 0.006 265);  /* cards, hover rows, inputs */
+  --bg-overlay: oklch(0.255 0.007 265);  /* palette, popovers, menus */
+  --bg-inset:   oklch(0.130 0.004 265);  /* code/log wells, recessed */
+
+  /* Foreground: 3 emphasis levels (+faint for disabled) */
+  --fg-strong: oklch(0.967 0.003 265);   /* headings, primary values */
+  --fg-default:oklch(0.805 0.006 265);   /* body, table cells */
+  --fg-muted:  oklch(0.635 0.009 265);   /* secondary, captions */
+  --fg-faint:  oklch(0.505 0.009 265);   /* disabled, placeholders */
+  --fg-on-accent: oklch(0.99 0 0);
+
+  /* Borders: whisper-thin, earned */
+  --border-subtle: rgba(255, 255, 255, 0.055);
+  --border-default: rgba(255, 255, 255, 0.090);
+  --border-strong: rgba(255, 255, 255, 0.150);
+
+  /* Brand accent (indigo) */
+  --accent:        oklch(0.645 0.185 277);
+  --accent-hover:  oklch(0.690 0.180 277);
+  --accent-press:  oklch(0.595 0.190 277);
+  --accent-strong: oklch(0.560 0.200 277);  /* button bg — AA with white text */
+  --accent-fg:     oklch(0.760 0.150 277);  /* accent as text/icon on dark */
+  --accent-on:     oklch(0.99 0 0);          /* text on accent buttons */
+  --accent-tint:   color-mix(in oklch, var(--accent) 16%, transparent);
+  --accent-tint-strong: color-mix(in oklch, var(--accent) 26%, transparent);
+  --accent-ring:   color-mix(in oklch, var(--accent) 50%, transparent);
+
+  /* Semantic status */
+  --status-running: oklch(0.800 0.150 152);
+  --status-running-tint: color-mix(in oklch, oklch(0.800 0.150 152) 15%, transparent);
+  --status-pending: oklch(0.830 0.140 82);
+  --status-pending-tint: color-mix(in oklch, oklch(0.830 0.140 82) 15%, transparent);
+  --status-failed: oklch(0.715 0.180 25);
+  --status-failed-tint: color-mix(in oklch, oklch(0.715 0.180 25) 16%, transparent);
+  --status-info: oklch(0.745 0.120 240);
+  --status-info-tint: color-mix(in oklch, oklch(0.745 0.120 240) 15%, transparent);
+  --status-neutral: oklch(0.660 0.010 265);
+  --status-neutral-tint: color-mix(in oklch, oklch(0.660 0.010 265) 16%, transparent);
+
+  /* Per-cluster accent palette — 8 distinct, theme-safe hues (L~0.72, C~0.16) */
+  --cluster-1: oklch(0.700 0.165 277);  /* indigo  */
+  --cluster-2: oklch(0.720 0.140 200);  /* cyan    */
+  --cluster-3: oklch(0.770 0.150 152);  /* green   */
+  --cluster-4: oklch(0.820 0.130 92);   /* amber   */
+  --cluster-5: oklch(0.740 0.160 48);   /* orange  */
+  --cluster-6: oklch(0.700 0.180 12);   /* rose    */
+  --cluster-7: oklch(0.690 0.180 330);  /* magenta */
+  --cluster-8: oklch(0.680 0.165 302);  /* violet  */
+
+  /* Shadows: depth via elevation + whisper border first; shadow is restrained */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.40);
+  --shadow-md: 0 6px 20px rgba(0,0,0,0.42);
+  --shadow-lg: 0 18px 50px rgba(0,0,0,0.55);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+  /* Syntax (YAML / logs) */
+  --syn-key:     oklch(0.760 0.150 277);
+  --syn-string:  oklch(0.800 0.150 152);
+  --syn-number:  oklch(0.830 0.140 82);
+  --syn-comment: oklch(0.560 0.010 265);
+  --syn-punct:   oklch(0.660 0.010 265);
+  --syn-bool:    oklch(0.745 0.150 25);
+}
+
+/* ============================================================
+   LIGHT THEME — cool neutral, hand-tuned, equally loved
+   ============================================================ */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base:    oklch(0.962 0.003 265);
+  --bg-surface: oklch(0.990 0.001 265);
+  --bg-raised:  oklch(1 0 0);
+  --bg-overlay: oklch(1 0 0);
+  --bg-inset:   oklch(0.975 0.003 265);
+
+  --fg-strong: oklch(0.270 0.014 265);
+  --fg-default:oklch(0.395 0.013 265);
+  --fg-muted:  oklch(0.520 0.012 265);
+  --fg-faint:  oklch(0.640 0.010 265);
+  --fg-on-accent: oklch(0.99 0 0);
+
+  --border-subtle: rgba(15, 18, 30, 0.07);
+  --border-default: rgba(15, 18, 30, 0.11);
+  --border-strong: rgba(15, 18, 30, 0.16);
+
+  --accent:        oklch(0.560 0.200 277);
+  --accent-hover:  oklch(0.520 0.205 277);
+  --accent-press:  oklch(0.490 0.205 277);
+  --accent-strong: oklch(0.540 0.205 277);
+  --accent-fg:     oklch(0.520 0.205 277);
+  --accent-on:     oklch(0.99 0 0);          /* text on accent buttons */
+  --accent-tint:   color-mix(in oklch, var(--accent) 11%, transparent);
+  --accent-tint-strong: color-mix(in oklch, var(--accent) 18%, transparent);
+  --accent-ring:   color-mix(in oklch, var(--accent) 38%, transparent);
+
+  --status-running: oklch(0.560 0.150 152);
+  --status-running-tint: color-mix(in oklch, oklch(0.560 0.150 152) 12%, transparent);
+  --status-pending: oklch(0.600 0.130 70);
+  --status-pending-tint: color-mix(in oklch, oklch(0.600 0.130 70) 14%, transparent);
+  --status-failed: oklch(0.545 0.205 25);
+  --status-failed-tint: color-mix(in oklch, oklch(0.545 0.205 25) 11%, transparent);
+  --status-info: oklch(0.540 0.165 250);
+  --status-info-tint: color-mix(in oklch, oklch(0.540 0.165 250) 11%, transparent);
+  --status-neutral: oklch(0.520 0.010 265);
+  --status-neutral-tint: color-mix(in oklch, oklch(0.520 0.010 265) 12%, transparent);
+
+  --cluster-1: oklch(0.540 0.190 277);
+  --cluster-2: oklch(0.540 0.130 220);
+  --cluster-3: oklch(0.530 0.140 152);
+  --cluster-4: oklch(0.610 0.130 75);
+  --cluster-5: oklch(0.580 0.165 48);
+  --cluster-6: oklch(0.560 0.200 18);
+  --cluster-7: oklch(0.540 0.195 330);
+  --cluster-8: oklch(0.530 0.190 302);
+
+  --shadow-sm: 0 1px 2px rgba(15,18,30,0.06);
+  --shadow-md: 0 6px 20px rgba(15,18,30,0.10);
+  --shadow-lg: 0 18px 50px rgba(15,18,30,0.16);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+  --syn-key:     oklch(0.520 0.190 277);
+  --syn-string:  oklch(0.500 0.140 152);
+  --syn-number:  oklch(0.560 0.140 50);
+  --syn-comment: oklch(0.600 0.010 265);
+  --syn-punct:   oklch(0.520 0.010 265);
+  --syn-bool:    oklch(0.545 0.180 25);
+}
+
+/* ---- Reset / base ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--lh-base);
+  color: var(--fg-default);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv05' 1, 'ss01' 1;
+}
+::selection { background: var(--accent-tint-strong); }
+
+/* Tabular numerals everywhere numbers must align (tables, ages, counts) */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Thin, calm scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: content-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
