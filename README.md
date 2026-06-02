@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png" alt="Kompass" width="120">
+<img src="docs/logo.png" alt="Kompass" width="160">
 
 # Kompass
 
