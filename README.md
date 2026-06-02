@@ -7,6 +7,8 @@
 Browse, inspect, and operate any cluster with a native, keyboard-driven UI that
 stays responsive on clusters of any size.
 
+<img src="docs/screenshot.png" alt="Kompass — Pods view with live metrics" width="900">
+
 </div>
 
 ---
