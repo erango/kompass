@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/logo.png" alt="Kompass" width="120">
+
 # Kompass
 
 **A beautiful, fast Kubernetes desktop app — built in Rust + Dioxus.**
