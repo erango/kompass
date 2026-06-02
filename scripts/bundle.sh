@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # Build Kompass.app (macOS) — no Xcode required.
-#   ./scripts/bundle.sh            # release build (default)
-#   ./scripts/bundle.sh --debug    # debug build (faster, for testing)
-#   ./scripts/bundle.sh --open     # also launch the app when done
+#   ./scripts/bundle.sh              # release build, host arch (default)
+#   ./scripts/bundle.sh --debug      # debug build (faster, for testing)
+#   ./scripts/bundle.sh --universal  # release universal binary (arm64 + x86_64)
+#   ./scripts/bundle.sh --open       # also launch the app when done
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROFILE="release"
 PROFILE_DIR="release"
 DO_OPEN=0
+UNIVERSAL=0
 for arg in "$@"; do
   case "$arg" in
     --debug) PROFILE="dev"; PROFILE_DIR="debug" ;;
     --open)  DO_OPEN=1 ;;
+    --universal) UNIVERSAL=1 ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
@@ -29,13 +32,27 @@ if [ ! -f "$ICNS" ] || [ "$SVG" -nt "$ICNS" ]; then
   "$ROOT/scripts/gen-icon.sh"
 fi
 
-echo "==> building ($PROFILE)…"
-cargo build --manifest-path "$ROOT/Cargo.toml" -p kompass-bin --profile "$PROFILE"
+if [ "$UNIVERSAL" = "1" ]; then
+  echo "==> building universal (arm64 + x86_64)…"
+  rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
+  cargo build --manifest-path "$ROOT/Cargo.toml" -p kompass-bin --release --target aarch64-apple-darwin
+  cargo build --manifest-path "$ROOT/Cargo.toml" -p kompass-bin --release --target x86_64-apple-darwin
+  BIN="$ROOT/target/kompass-universal"
+  lipo -create \
+    "$ROOT/target/aarch64-apple-darwin/release/kompass" \
+    "$ROOT/target/x86_64-apple-darwin/release/kompass" \
+    -output "$BIN"
+  echo "==> lipo: $(lipo -archs "$BIN")"
+else
+  echo "==> building ($PROFILE)…"
+  cargo build --manifest-path "$ROOT/Cargo.toml" -p kompass-bin --profile "$PROFILE"
+  BIN="$ROOT/target/$PROFILE_DIR/kompass"
+fi
 
 echo "==> assembling $APP (v$VERSION)…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$ROOT/target/$PROFILE_DIR/kompass" "$APP/Contents/MacOS/Kompass"
+cp "$BIN" "$APP/Contents/MacOS/Kompass"
 cp "$ICNS" "$APP/Contents/Resources/Kompass.icns"
 
 cat > "$APP/Contents/Info.plist" <<EOF

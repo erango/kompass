@@ -72,6 +72,23 @@ state — so the interface never blocks on the network, even mid-reconnect.
 | `⌘F` / `⌘G` | Focus log/YAML search / next match |
 | `⌘T` | New namespace view |
 
+## Install (macOS)
+
+Universal build (Apple Silicon + Intel).
+
+```sh
+brew install --cask erango/tap/kompass
+```
+
+Or grab the `.dmg` from the [latest release](https://github.com/erango/kompass/releases/latest)
+and drag **Kompass** into Applications.
+
+> The build is **unsigned**, so on first launch macOS will warn. Either
+> right-click the app → **Open**, or run:
+> ```sh
+> xattr -dr com.apple.quarantine /Applications/Kompass.app
+> ```
+
 ## Build & run
 
 Requires a Rust toolchain and a working kubeconfig (`kubectl config
