@@ -494,6 +494,70 @@ fn send_cmd(cmd: Cmd) {
 /// UI coroutine. Phase 2 replaces this with a `CoreHandle` via Dioxus context.
 static RX: Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Delta>>> = Mutex::new(None);
 
+/// Ask the user's login+interactive shell for its `$PATH`, bounded by `timeout`
+/// so a slow/hanging shell rc can't stall startup. Returns None on timeout/error.
+#[cfg(target_os = "macos")]
+fn shell_path_via(shell: &str, timeout: std::time::Duration) -> Option<String> {
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(shell)
+        .args(["-ilc", "echo $PATH"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .spawn()
+        .ok()?;
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return None;
+                }
+                // PATH is small (well under the pipe buffer), so reading after
+                // exit can't deadlock.
+                use std::io::Read;
+                let mut out = String::new();
+                child.stdout.take()?.read_to_string(&mut out).ok()?;
+                return Some(out);
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(40));
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+/// Human-friendly text for the freshness/"Stale" bar tooltip on a connection
+/// error — with healing steps for the common "auth exec plugin not on PATH" case.
+fn conn_error_tip(e: &str) -> String {
+    let lower = e.to_lowercase();
+    let auth_exec_missing = lower.contains("auth exec")
+        && (lower.contains("no such file")
+            || lower.contains("os error 2")
+            || lower.contains("not found")
+            || lower.contains("executable file not found"));
+    if auth_exec_missing {
+        format!(
+            "Can't reach the cluster: its kubeconfig runs an auth plugin, but that \
+             program isn't on Kompass's PATH.\n\n\
+             To fix:\n\
+             •  Install the auth helper your kubeconfig uses — e.g. awscli (aws), \
+             gke-gcloud-auth-plugin, or kubelogin.\n\
+             •  Confirm it's on your shell PATH (in Terminal: which aws / gcloud / kubelogin).\n\
+             •  Quit and reopen Kompass so it re-reads your PATH.\n\n\
+             {e}"
+        )
+    } else {
+        format!("Connection error: {e}")
+    }
+}
+
 fn main() {
     // Inject common CLI paths for macOS app bundles (where PATH is just /usr/bin:/bin)
     // so Kubernetes auth-exec plugins (aws-iam-authenticator, gke-gcloud-auth-plugin) can be found.
@@ -503,18 +567,13 @@ fn main() {
             let mut paths = std::env::split_paths(&path).collect::<Vec<_>>();
             
             // 1. Try to inherit the exact PATH from the user's interactive shell
+            //    (where they set up aws/gcloud/kubelogin). Bounded by a timeout so
+            //    a slow/hanging shell rc can't block app startup.
             if let Ok(shell) = std::env::var("SHELL") {
-                if let Ok(output) = std::process::Command::new(shell)
-                    .args(["-ilc", "echo $PATH"])
-                    .output()
-                {
-                    if output.status.success() {
-                        if let Ok(shell_path) = String::from_utf8(output.stdout) {
-                            for p in std::env::split_paths(&shell_path.trim().to_string()) {
-                                if !paths.contains(&p) {
-                                    paths.push(p);
-                                }
-                            }
+                if let Some(shell_path) = shell_path_via(&shell, std::time::Duration::from_secs(2)) {
+                    for p in std::env::split_paths(shell_path.trim()) {
+                        if !paths.contains(&p) {
+                            paths.push(p);
                         }
                     }
                 }
@@ -1919,7 +1978,7 @@ fn App() -> Element {
             "Connecting",
             "Connecting to cluster…".to_string(),
         ),
-        ConnState::Error(e) => ("freshness error", "Stale", format!("Connection error: {e}")),
+        ConnState::Error(e) => ("freshness error", "Stale", conn_error_tip(e)),
     };
 
     let sel_count = selected().len();
@@ -4984,6 +5043,19 @@ mod tests {
         assert_eq!(col_cmp("5", "5"), Ordering::Equal);
         // non-numeric → string compare
         assert_eq!(col_cmp("ClusterIP", "LoadBalancer"), Ordering::Less);
+    }
+
+    #[test]
+    fn conn_error_tip_detects_auth_exec() {
+        let t = conn_error_tip("auth error: unable to run auth exec: No such file or directory (os error 2)");
+        assert!(t.contains("auth plugin"));
+        assert!(t.contains("To fix"));
+        assert!(t.contains("kubelogin"));
+        // raw error preserved
+        assert!(t.contains("os error 2"));
+        // unrelated errors fall through unchanged
+        let other = conn_error_tip("connection refused");
+        assert_eq!(other, "Connection error: connection refused");
     }
 
     #[test]
