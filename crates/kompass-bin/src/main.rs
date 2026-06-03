@@ -495,6 +495,32 @@ fn send_cmd(cmd: Cmd) {
 static RX: Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Delta>>> = Mutex::new(None);
 
 fn main() {
+    // Inject common CLI paths for macOS app bundles (where PATH is just /usr/bin:/bin)
+    // so Kubernetes auth-exec plugins (aws-iam-authenticator, gke-gcloud-auth-plugin) can be found.
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(path) = std::env::var_os("PATH") {
+            let mut paths = std::env::split_paths(&path).collect::<Vec<_>>();
+            let mut extras = vec![
+                std::path::PathBuf::from("/usr/local/bin"),
+                std::path::PathBuf::from("/opt/homebrew/bin"),
+            ];
+            if let Ok(home) = std::env::var("HOME") {
+                extras.push(std::path::PathBuf::from(format!("{home}/.local/bin")));
+                extras.push(std::path::PathBuf::from(format!("{home}/.krew/bin")));
+                extras.push(std::path::PathBuf::from(format!("{home}/.cargo/bin")));
+            }
+            for extra in extras {
+                if !paths.contains(&extra) {
+                    paths.push(extra);
+                }
+            }
+            if let Ok(new_path) = std::env::join_paths(paths) {
+                std::env::set_var("PATH", new_path);
+            }
+        }
+    }
+
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
