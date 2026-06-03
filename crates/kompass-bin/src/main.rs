@@ -501,6 +501,26 @@ fn main() {
     {
         if let Some(path) = std::env::var_os("PATH") {
             let mut paths = std::env::split_paths(&path).collect::<Vec<_>>();
+            
+            // 1. Try to inherit the exact PATH from the user's interactive shell
+            if let Ok(shell) = std::env::var("SHELL") {
+                if let Ok(output) = std::process::Command::new(shell)
+                    .args(["-ilc", "echo $PATH"])
+                    .output()
+                {
+                    if output.status.success() {
+                        if let Ok(shell_path) = String::from_utf8(output.stdout) {
+                            for p in std::env::split_paths(&shell_path.trim().to_string()) {
+                                if !paths.contains(&p) {
+                                    paths.push(p);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Fallback / ensure common locations are present
             let mut extras = vec![
                 std::path::PathBuf::from("/usr/local/bin"),
                 std::path::PathBuf::from("/opt/homebrew/bin"),
@@ -509,6 +529,9 @@ fn main() {
                 extras.push(std::path::PathBuf::from(format!("{home}/.local/bin")));
                 extras.push(std::path::PathBuf::from(format!("{home}/.krew/bin")));
                 extras.push(std::path::PathBuf::from(format!("{home}/.cargo/bin")));
+                // Common google-cloud-sdk paths
+                extras.push(std::path::PathBuf::from(format!("{home}/google-cloud-sdk/bin")));
+                extras.push(std::path::PathBuf::from(format!("{home}/Downloads/google-cloud-sdk/bin")));
             }
             for extra in extras {
                 if !paths.contains(&extra) {
