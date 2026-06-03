@@ -77,8 +77,10 @@ Free, unsigned, macOS-first. **GitHub Releases + a Homebrew tap.**
   ```
 - **Homebrew:** a separate public tap repo `erango/homebrew-tap` holds
   `Casks/kompass.rb` (version + dmg url + sha256). Users:
-  `brew install --cask erango/tap/kompass`. After each release, bump the cask's
-  `version`/`url`/`sha256` (the sha256 is in the release notes / job summary).
+  `brew install --cask erango/tap/kompass`. The release workflow **auto-bumps**
+  the cask's `version`/`sha256` after publishing — requires a repo secret
+  `TAP_TOKEN` (a PAT with `contents:write` on `erango/homebrew-tap`). Without it,
+  the bump step is skipped and the cask must be updated by hand.
 - **Unsigned:** no Apple Developer ID, so Gatekeeper warns on first launch
   (right-click → Open, or `xattr -dr com.apple.quarantine`). Homebrew does **not**
   strip quarantine. To remove the warning later: enroll in Apple Developer
