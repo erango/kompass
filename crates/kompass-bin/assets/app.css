@@ -329,7 +329,8 @@ td.col-actions { width: 128px; }
   animation: sweep 1.4s var(--ease-in-out) infinite;
 }
 @keyframes sweep { from { left: -32%; } to { left: 100%; } }
-.is-revalidating tbody { opacity: 0.82; transition: opacity var(--dur-base); }
+/* The top sweep bar is the revalidation cue — don't dim the tbody (opacity on
+   the group fades the faint row borders, which vanish under a hovered row). */
 
 /* ---------- Skeleton (loading-cold) ---------- */
 .skel { display: inline-block; height: 11px; border-radius: var(--radius-sm); background: var(--bg-raised); position: relative; overflow: hidden; }
