@@ -1,0 +1,3 @@
+[alias]
+# Dev loop: run the desktop app against the current kube context.
+dev = "run -p kompass-bin"

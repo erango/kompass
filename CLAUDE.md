@@ -40,13 +40,18 @@ channel; UI renders from in-memory signals. The UI thread never blocks on I/O.
 ```sh
 cargo build                 # build all
 cargo test                  # run the suite (kompass-core + kompass-bin)
-cargo run -p kompass-bin    # run against the current kube context
+cargo dev                   # alias: run -p kompass-bin (quick raw run)
+cargo debug                 # build + launch the debug .app bundle
 
 # macOS .app bundle (preferred for UI testing — exercises the real bundle):
 ./scripts/bundle.sh --debug --open      # debug build + launch
 ./scripts/bundle.sh                     # release, host arch
 ./scripts/bundle.sh --universal         # release universal (arm64 + x86_64)
 ```
+
+`cargo dev` is a cargo alias (`.cargo/config.toml`). `cargo debug` is an external
+subcommand (`scripts/cargo-debug`) — one-time install so `cargo` finds it:
+`ln -sf "$PWD/scripts/cargo-debug" ~/.cargo/bin/`.
 
 - Uses the active kubeconfig context. Some clusters are real prod —
   **write actions hit live clusters** (pods delete immediately; everything else

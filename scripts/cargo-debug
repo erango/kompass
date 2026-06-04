@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# `cargo debug` → build + launch the debug Kompass.app bundle.
+# (cargo finds this as the external subcommand `cargo-debug` on PATH.)
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bundle.sh" --debug --open "$@"
