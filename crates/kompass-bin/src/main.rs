@@ -353,6 +353,10 @@ const EXTRA_CSS: &str = r#"
 }
 .about-mark { width: 46px; height: 46px; color: var(--accent); margin-bottom: var(--sp-2); }
 .about-name { font-size: var(--text-title); font-weight: var(--fw-semibold); color: var(--fg-strong); letter-spacing: var(--tracking-tight); }
+.about-ver { font-size: var(--text-small); color: var(--fg-faint); font-variant-numeric: tabular-nums; margin-top: calc(-1 * var(--sp-2)); }
+.about-upd { font-size: var(--text-small); color: var(--fg-muted); min-height: 16px; }
+.about-upd-link { border: none; background: transparent; cursor: pointer; color: var(--accent-fg); font-size: var(--text-small); padding: 0; }
+.about-upd-link:hover { text-decoration: underline; }
 .about-love { font-size: var(--text-body); color: var(--fg-muted); margin-top: var(--sp-2); }
 .about-love .heart { color: var(--status-failed); }
 .about-love b { color: var(--fg-default); font-weight: var(--fw-medium); }
@@ -1339,32 +1343,49 @@ fn App() -> Element {
 
     // About popup.
     let mut about_open = use_signal(|| false);
-    // Update check: (new version, installed-via-brew). Set once at startup.
+    // Update check: (new version, installed-via-brew) when one is available.
     let mut update_info = use_signal(|| None::<(String, bool)>);
     let mut update_dismissed = use_signal(|| false);
-    use_hook(|| {
+    let mut checking_update = use_signal(|| false);
+    let mut update_checked = use_signal(|| false); // ≥1 check has completed
+
+    // Run a release check (GitHub API), refreshing the signals. Re-shows the
+    // banner when the available version changes. Reused by the daily loop and
+    // the manual "About" check.
+    let check_update = use_callback(move |_: ()| {
+        if *checking_update.peek() {
+            return;
+        }
         spawn(async move {
-            // Check at startup, then once a day while the app stays open.
-            loop {
-                let found = tokio::task::spawn_blocking(|| {
-                    let tag = latest_release_tag()?;
-                    if is_newer(&tag, env!("CARGO_PKG_VERSION")) {
-                        Some((tag.trim_start_matches('v').to_string(), installed_via_brew()))
-                    } else {
-                        None
-                    }
-                })
-                .await
-                .ok()
-                .flatten();
-                if let Some((ver, brew)) = found {
-                    // Re-show the banner only when the available version changed.
+            checking_update.set(true);
+            let found = tokio::task::spawn_blocking(|| {
+                let tag = latest_release_tag()?;
+                is_newer(&tag, env!("CARGO_PKG_VERSION"))
+                    .then(|| (tag.trim_start_matches('v').to_string(), installed_via_brew()))
+            })
+            .await
+            .ok()
+            .flatten();
+            match found {
+                Some((ver, brew)) => {
                     let changed = update_info.peek().as_ref().map(|(v, _)| v != &ver).unwrap_or(true);
                     if changed {
                         update_dismissed.set(false);
                     }
                     update_info.set(Some((ver, brew)));
                 }
+                None => update_info.set(None),
+            }
+            update_checked.set(true);
+            checking_update.set(false);
+        });
+    });
+
+    // Check at startup, then once a day while the app stays open.
+    use_hook(move || {
+        spawn(async move {
+            loop {
+                check_update.call(());
                 tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
             }
         });
@@ -2615,7 +2636,7 @@ fn App() -> Element {
                 }
                 div { class: "nav-spacer" }
                 div { class: "nav-item",
-                    onclick: move |_| about_open.set(true),
+                    onclick: move |_| { about_open.set(true); check_update.call(()); },
                     {kompass_mark("")}
                     span { class: "label", "About Kompass" }
                 }
@@ -3122,6 +3143,20 @@ fn App() -> Element {
                 div { class: "about-dialog",
                     {kompass_mark("about-mark")}
                     div { class: "about-name", "Kompass" }
+                    div { class: "about-ver", "Version " {env!("CARGO_PKG_VERSION")} }
+                    div { class: "about-upd",
+                        if checking_update() {
+                            "Checking for updates…"
+                        } else if let Some((v, _)) = update_info() {
+                            button {
+                                class: "about-upd-link",
+                                onclick: move |_| open_url("https://github.com/erango/kompass/releases/latest"),
+                                "Update available: {v} →"
+                            }
+                        } else if update_checked() {
+                            "You're on the latest version."
+                        }
+                    }
                     div { class: "about-love",
                         "Made with "
                         span { class: "heart", "♥" }
