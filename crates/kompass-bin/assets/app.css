@@ -232,7 +232,7 @@
 .table tbody tr {
   height: var(--row-h);
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-standard);
+  /* Instant hover feedback — a fade here reads as lag on dense rows. */
 }
 .table tbody tr:hover { background: var(--bg-surface); }
 .table tbody tr.selected { background: var(--accent-tint); }
