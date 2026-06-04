@@ -983,6 +983,17 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
 }
 
+/// Title-cased label from a kind id ("deployments.apps" → "Deployments"). Used
+/// as a fallback before the discovered catalog (with real labels) loads.
+fn label_from_id(id: &str) -> String {
+    let plural = id.split('.').next().unwrap_or(id);
+    let mut chars = plural.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => id.to_string(),
+    }
+}
+
 /// Dotted-version compare: true if `latest` > `current` (tolerates a leading 'v',
 /// ignores any pre-release suffix). e.g. is_newer("v1.2.0", "1.10.0") == false.
 fn is_newer(latest: &str, current: &str) -> bool {
@@ -1862,7 +1873,12 @@ fn App() -> Element {
     let cat = catalog();
     let active_meta = cat.iter().find(|m| m.id() == active_id).cloned();
     let kind_name = active_meta.as_ref().map(|m| m.kind.clone()).unwrap_or_else(|| "Pod".into());
-    let title = active_meta.as_ref().map(|m| m.label()).unwrap_or_else(|| active_id.clone());
+    // Before the catalog loads there's no meta yet — derive a clean label from
+    // the id (plural before the group) instead of showing the raw "plural.group".
+    let title = active_meta
+        .as_ref()
+        .map(|m| m.label())
+        .unwrap_or_else(|| label_from_id(&active_id));
     let kind_cols = columns_for(&kind_name);
     let show_metrics = has_metrics(&kind_name);
     let metric_hist = metrics_hist();
@@ -5233,6 +5249,13 @@ mod tests {
         assert_eq!(col_cmp("5", "5"), Ordering::Equal);
         // non-numeric → string compare
         assert_eq!(col_cmp("ClusterIP", "LoadBalancer"), Ordering::Less);
+    }
+
+    #[test]
+    fn label_from_id_titlecases_plural() {
+        assert_eq!(label_from_id("deployments.apps"), "Deployments");
+        assert_eq!(label_from_id("pods"), "Pods");
+        assert_eq!(label_from_id("certificates.cert-manager.io"), "Certificates");
     }
 
     #[test]
