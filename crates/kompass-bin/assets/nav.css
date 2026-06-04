@@ -17,7 +17,7 @@
   position: relative; display: flex; align-items: center; gap: var(--sp-4);
   height: 29px; padding: 0 var(--sp-4) 0 36px; border-radius: var(--radius-md);
   font-size: var(--text-small); color: var(--fg-muted); cursor: pointer;
-  white-space: nowrap; transition: background var(--dur-fast), color var(--dur-fast);
+  white-space: nowrap; transition: color var(--dur-fast); /* instant hover bg */
 }
 /* Guide rail — drawn per row so it shares the row's own positioning
    context with the active accent below; the segments stack into one line. */
