@@ -576,6 +576,8 @@ fn conn_error_tip(e: &str) -> String {
             || lower.contains("os error 2")
             || lower.contains("not found")
             || lower.contains("executable file not found"));
+    // The plugin ran but exited non-zero — almost always expired/invalid creds.
+    let auth_exec_failed = lower.contains("auth exec command") && lower.contains("failed with status");
     if auth_exec_missing {
         format!(
             "Can't reach the cluster: its kubeconfig runs an auth plugin, but that \
@@ -585,6 +587,30 @@ fn conn_error_tip(e: &str) -> String {
              gke-gcloud-auth-plugin, or kubelogin.\n\
              •  Confirm it's on your shell PATH (in Terminal: which aws / gcloud / kubelogin).\n\
              •  Quit and reopen Kompass so it re-reads your PATH.\n\n\
+             {e}"
+        )
+    } else if auth_exec_failed {
+        // Tailor the refresh command to the provider (and AWS profile if present).
+        let refresh = if lower.contains("eks get-token") || lower.contains("aws") {
+            match e.split("AWS_PROFILE=\"").nth(1).and_then(|s| s.split('"').next()) {
+                Some(p) if !p.is_empty() => {
+                    format!("aws sso login --profile {p}  (or refresh that profile's credentials)")
+                }
+                _ => "aws sso login  (or refresh your AWS credentials)".to_string(),
+            }
+        } else if lower.contains("gke-gcloud") || lower.contains("gcloud") {
+            "gcloud auth login".to_string()
+        } else if lower.contains("kubelogin") || lower.contains("az ") {
+            "az login".to_string()
+        } else {
+            "refresh your cluster credentials".to_string()
+        };
+        format!(
+            "Reached the cluster's auth plugin, but it failed — usually expired or \
+             missing credentials.\n\n\
+             To fix:\n\
+             •  In a terminal, refresh credentials: {refresh}\n\
+             •  Then click Retry.\n\n\
              {e}"
         )
     } else {
@@ -5319,6 +5345,15 @@ mod tests {
         // unrelated errors fall through unchanged
         let other = conn_error_tip("connection refused");
         assert_eq!(other, "Connection error: connection refused");
+    }
+
+    #[test]
+    fn conn_error_tip_detects_expired_creds() {
+        let e = "auth error: auth exec command 'AWS_PROFILE=\"dev\" aws --region us-east-1 eks get-token --cluster-name eks-green-dev' failed with status exit status: 255";
+        let t = conn_error_tip(e);
+        assert!(t.contains("expired or"));
+        // extracts the AWS profile into a tailored refresh command
+        assert!(t.contains("aws sso login --profile dev"));
     }
 
     #[test]
