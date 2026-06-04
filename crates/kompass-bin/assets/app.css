@@ -310,8 +310,13 @@ td.col-check, th.col-check { width: 20px; padding-right: 0; }
 .row-actions .icon-btn svg { width: 15px; height: 15px; }
 td.col-actions { width: 128px; }
 
-/* Live-update settle: new/changed rows fade in, never flash */
-@keyframes settle-in { from { background: var(--accent-tint); } to { background: transparent; } }
+/* Live-update settle: a calm accent tick on the row's left edge that fades out.
+   Uses box-shadow (not background) so it never washes the row separators or the
+   hover highlight — important during the revalidating burst of updates. */
+@keyframes settle-in {
+  from { box-shadow: inset 2px 0 0 0 var(--accent); }
+  to   { box-shadow: inset 2px 0 0 0 transparent; }
+}
 .table tbody tr.just-updated { animation: settle-in var(--dur-settle) var(--ease-out); }
 
 /* ---------- Freshness states on the table ---------- */
