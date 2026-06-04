@@ -267,6 +267,36 @@ const EXTRA_CSS: &str = r#"
   position: fixed; right: var(--sp-7); bottom: var(--sp-7);
   display: flex; flex-direction: column; gap: var(--sp-4); z-index: var(--z-toast);
 }
+/* Update-available banner — pill below the topbar. */
+.update-banner {
+  position: fixed; left: 50%; top: 58px; transform: translateX(-50%);
+  z-index: var(--z-toast); display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-5);
+  background: var(--bg-overlay); border: 1px solid var(--accent);
+  border-radius: var(--radius-full); box-shadow: var(--shadow-lg);
+  font-size: var(--text-small); color: var(--fg-default);
+  animation: toast-in var(--dur-base) var(--ease-out);
+}
+.update-banner .ub-mark { width: 16px; height: 16px; display: inline-flex; }
+.update-banner .ub-text b { color: var(--fg-strong); font-weight: var(--fw-semibold); }
+.update-banner .ub-btn {
+  display: inline-flex; align-items: center; gap: var(--sp-3);
+  height: 26px; padding: 0 var(--sp-4); border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle); background: var(--bg-raised);
+  color: var(--fg-default); font-size: var(--text-small); cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.update-banner .ub-btn svg { width: 14px; height: 14px; }
+.update-banner .ub-btn:hover { border-color: var(--accent); color: var(--accent-fg); }
+.update-banner .ub-btn.ghost { background: transparent; border-color: transparent; color: var(--fg-muted); }
+.update-banner .ub-btn.ghost:hover { color: var(--fg-default); }
+.update-banner .ub-x {
+  width: 24px; height: 24px; border: none; background: transparent; cursor: pointer;
+  color: var(--fg-faint); display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+}
+.update-banner .ub-x:hover { background: var(--bg-raised); color: var(--fg-default); }
+.update-banner .ub-x svg { width: 14px; height: 14px; }
 .toast {
   display: flex; align-items: center; gap: var(--sp-4);
   min-width: 280px; max-width: 400px; padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
@@ -953,6 +983,59 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
 }
 
+/// Dotted-version compare: true if `latest` > `current` (tolerates a leading 'v',
+/// ignores any pre-release suffix). e.g. is_newer("v1.2.0", "1.10.0") == false.
+fn is_newer(latest: &str, current: &str) -> bool {
+    fn parts(s: &str) -> Vec<u64> {
+        s.trim()
+            .trim_start_matches('v')
+            .split('.')
+            .map(|seg| {
+                seg.split(|c: char| !c.is_ascii_digit())
+                    .next()
+                    .unwrap_or("")
+                    .parse()
+                    .unwrap_or(0)
+            })
+            .collect()
+    }
+    let (l, c) = (parts(latest), parts(current));
+    for i in 0..l.len().max(c.len()) {
+        let (a, b) = (l.get(i).copied().unwrap_or(0), c.get(i).copied().unwrap_or(0));
+        if a != b {
+            return a > b;
+        }
+    }
+    false
+}
+
+/// Latest release tag from the GitHub API (via curl, always present on macOS).
+fn latest_release_tag() -> Option<String> {
+    let out = std::process::Command::new("curl")
+        .args([
+            "-fsSL",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "https://api.github.com/repos/erango/kompass/releases/latest",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    v["tag_name"].as_str().map(String::from)
+}
+
+/// Best-effort: was this app installed via the Homebrew cask?
+fn installed_via_brew() -> bool {
+    std::process::Command::new("brew")
+        .args(["list", "--cask", "kompass"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 fn icon(id: &str, stroke_width: &str) -> Element {
     let inner = format!("<use href=\"#{id}\"/>");
     rsx! {
@@ -1245,6 +1328,36 @@ fn App() -> Element {
 
     // About popup.
     let mut about_open = use_signal(|| false);
+    // Update check: (new version, installed-via-brew). Set once at startup.
+    let mut update_info = use_signal(|| None::<(String, bool)>);
+    let mut update_dismissed = use_signal(|| false);
+    use_hook(|| {
+        spawn(async move {
+            // Check at startup, then once a day while the app stays open.
+            loop {
+                let found = tokio::task::spawn_blocking(|| {
+                    let tag = latest_release_tag()?;
+                    if is_newer(&tag, env!("CARGO_PKG_VERSION")) {
+                        Some((tag.trim_start_matches('v').to_string(), installed_via_brew()))
+                    } else {
+                        None
+                    }
+                })
+                .await
+                .ok()
+                .flatten();
+                if let Some((ver, brew)) = found {
+                    // Re-show the banner only when the available version changed.
+                    let changed = update_info.peek().as_ref().map(|(v, _)| v != &ver).unwrap_or(true);
+                    if changed {
+                        update_dismissed.set(false);
+                    }
+                    update_info.set(Some((ver, brew)));
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
+            }
+        });
+    });
 
     // ⌘K command palette.
     let mut palette_open = use_signal(|| false);
@@ -3004,6 +3117,40 @@ fn App() -> Element {
                         onclick: move |_| open_url("https://github.com/erango/kompass"),
                         {icon("i-arrow-right", "1.8")}
                         "github.com/erango/kompass"
+                    }
+                }
+            }
+
+            // ===== Update banner =====
+            if let Some((ver, via_brew)) = update_info() {
+                if !update_dismissed() {
+                    div { class: "update-banner",
+                        span { class: "ub-mark", {kompass_mark("")} }
+                        span { class: "ub-text", "Kompass " b { "{ver}" } " is available." }
+                        if via_brew {
+                            button {
+                                class: "ub-btn tip", "data-tip": "Copy to clipboard",
+                                onclick: move |_| { dioxus::document::eval("navigator.clipboard && navigator.clipboard.writeText('brew upgrade --cask kompass')"); },
+                                {icon("i-copy", "1.7")}
+                                "brew upgrade"
+                            }
+                        } else {
+                            button {
+                                class: "ub-btn",
+                                onclick: move |_| open_url("https://github.com/erango/kompass/releases/latest"),
+                                {icon("i-dl", "1.7")}
+                                "Download"
+                            }
+                        }
+                        button {
+                            class: "ub-btn ghost",
+                            onclick: move |_| open_url("https://github.com/erango/kompass/releases/latest"),
+                            "Notes"
+                        }
+                        button {
+                            class: "ub-x", onclick: move |_| update_dismissed.set(true),
+                            {icon("i-x", "1.8")}
+                        }
                     }
                 }
             }
@@ -5086,6 +5233,21 @@ mod tests {
         assert_eq!(col_cmp("5", "5"), Ordering::Equal);
         // non-numeric → string compare
         assert_eq!(col_cmp("ClusterIP", "LoadBalancer"), Ordering::Less);
+    }
+
+    #[test]
+    fn is_newer_compares_versions() {
+        assert!(is_newer("v1.0.4", "1.0.3"));
+        assert!(is_newer("1.1.0", "1.0.9"));
+        assert!(is_newer("2.0.0", "1.9.9"));
+        assert!(!is_newer("1.0.3", "1.0.3"));
+        assert!(!is_newer("v1.0.3", "1.0.3")); // leading v tolerated
+        assert!(!is_newer("0.9.0", "1.0.0"));
+        // numeric, not lexical: 1.2 < 1.10
+        assert!(is_newer("1.10.0", "1.2.0"));
+        assert!(!is_newer("1.2.0", "1.10.0"));
+        // pre-release suffix ignored
+        assert!(!is_newer("1.0.3-rc1", "1.0.3"));
     }
 
     #[test]
