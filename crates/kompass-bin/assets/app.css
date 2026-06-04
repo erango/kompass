@@ -241,7 +241,6 @@
   padding: 0 var(--sp-5); font-size: var(--text-small); color: var(--fg-default);
   border-bottom: 1px solid var(--border-subtle); white-space: nowrap; vertical-align: middle;
 }
-.table tbody tr:hover td { border-color: transparent; }
 
 .cell-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 /* Name + container cells let their tooltips escape the cell (the inner content
