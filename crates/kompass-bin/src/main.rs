@@ -1078,7 +1078,18 @@ fn App() -> Element {
     let mut rows = use_signal(Vec::<ResourceRow>::new);
     let mut conn = use_signal(|| ConnState::Connecting);
     let mut context = use_signal(|| "—".to_string());
-    let mut dark = use_signal(|| prefs.dark);
+    // Theme mode ("system"/"dark"/"light"); `os_dark` tracks the OS appearance
+    // (updated from a prefers-color-scheme listener) for the "system" mode.
+    let mut theme_mode = use_signal(|| prefs.theme.clone());
+    let mut os_dark = use_signal(|| true);
+    let cycle_theme = use_callback(move |_: ()| {
+        let next = match theme_mode().as_str() {
+            "system" => "light",
+            "light" => "dark",
+            _ => "system",
+        };
+        theme_mode.set(next.into());
+    });
     // Boot to the user's default page ("overview" or a kind id).
     let boot_page = prefs.default_page.clone();
     let mut default_page = use_signal(|| prefs.default_page.clone());
@@ -1183,7 +1194,7 @@ fn App() -> Element {
             context: context(),
             namespace: ns_views().get(ns_active()).cloned().flatten(),
             kind: kind(),
-            dark: dark(),
+            theme: theme_mode(),
             sort_key: sk.id(),
             sort_asc: sa,
             ns_views: ns_views(),
@@ -1251,6 +1262,20 @@ fn App() -> Element {
     use_hook(|| {
         dioxus::document::eval(XTERM_JS);
         dioxus::document::eval(XTERM_FIT_JS);
+    });
+
+    // Track the OS appearance for "system" theme mode (and react to live changes).
+    use_hook(|| {
+        spawn(async move {
+            let mut eval = dioxus::document::eval(
+                "const mq=window.matchMedia('(prefers-color-scheme: dark)');\
+                 const s=()=>dioxus.send(mq.matches?'osdark':'oslight');\
+                 s(); mq.addEventListener('change', s);",
+            );
+            while let Ok(m) = eval.recv::<String>().await {
+                os_dark.set(m == "osdark");
+            }
+        });
     });
 
     // Live Overview: re-fetch the snapshot every 8s while it's open. The merge on
@@ -1592,7 +1617,13 @@ fn App() -> Element {
     });
 
     // Derived view state.
-    let theme = if dark() { "dark" } else { "light" };
+    // Effective light/dark: explicit modes win; "system" follows the OS.
+    let theme_dark = match theme_mode().as_str() {
+        "light" => false,
+        "dark" => true,
+        _ => os_dark(),
+    };
+    let theme = if theme_dark { "dark" } else { "light" };
     let ctx = context();
     let accent_var = format!(
         "--cluster-accent: var(--kc-{});",
@@ -1879,7 +1910,7 @@ fn App() -> Element {
         match a {
             PalAction::Kind(id) => switch_kind.call(id),
             PalAction::Context(c) => switch_context.call(c),
-            PalAction::ToggleTheme => dark.toggle(),
+            PalAction::ToggleTheme => cycle_theme.call(()),
             PalAction::Open(t) => {
                 manifest.set(None);
                 manifest_err.set(None);
@@ -1900,11 +1931,15 @@ fn App() -> Element {
     let mut pal_items: Vec<PalItem> = Vec::new();
     if palette_open() {
         let pq = palette_query().to_lowercase();
-        let theme_title = if dark() { "Switch to light theme" } else { "Switch to dark theme" };
+        let (theme_icon, theme_title) = match theme_mode().as_str() {
+            "system" => ("i-display", "Theme: System → Light"),
+            "light" => ("i-sun", "Theme: Light → Dark"),
+            _ => ("i-moon", "Theme: Dark → System"),
+        };
         if pq.is_empty() || theme_title.to_lowercase().contains(&pq) || "theme".contains(&pq) {
             pal_items.push(PalItem {
                 group: "Commands",
-                icon: if dark() { "i-sun" } else { "i-moon" },
+                icon: theme_icon,
                 title: theme_title.into(),
                 sub: String::new(),
                 action: PalAction::ToggleTheme,
@@ -2295,9 +2330,17 @@ fn App() -> Element {
                     }
                     button {
                         class: "icon-btn tip",
-                        "data-tip": "Toggle theme",
-                        onclick: move |_| dark.toggle(),
-                        if dark() { {icon("i-sun", "1.7")} } else { {icon("i-moon", "1.7")} }
+                        "data-tip": match theme_mode().as_str() {
+                            "system" => "Theme: System (following OS)",
+                            "light" => "Theme: Light",
+                            _ => "Theme: Dark",
+                        },
+                        onclick: move |_| cycle_theme.call(()),
+                        match theme_mode().as_str() {
+                            "system" => rsx! { {icon("i-display", "1.7")} },
+                            "light" => rsx! { {icon("i-sun", "1.7")} },
+                            _ => rsx! { {icon("i-moon", "1.7")} },
+                        }
                     }
                     // Windows/Linux only (hidden on macOS via data-platform).
                     div { class: "win-controls",

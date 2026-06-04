@@ -12,8 +12,9 @@ pub struct Prefs {
     pub namespace: Option<String>,
     /// Last resource kind id ("pods" / "deployments").
     pub kind: String,
-    /// Dark theme.
-    pub dark: bool,
+    /// Theme mode: "system" (follow OS), "dark", or "light".
+    #[serde(default = "default_theme")]
+    pub theme: String,
     /// Last sort column id ("name" / "namespace" / "status" / "age" / "col:N").
     #[serde(default = "default_sort_key")]
     pub sort_key: String,
@@ -44,6 +45,10 @@ fn default_page() -> String {
     "deployments.apps".into()
 }
 
+fn default_theme() -> String {
+    "dark".into()
+}
+
 fn default_sort_key() -> String {
     "name".into()
 }
@@ -57,7 +62,7 @@ impl Default for Prefs {
             context: String::new(),
             namespace: None,
             kind: "pods".into(),
-            dark: true,
+            theme: default_theme(),
             sort_key: default_sort_key(),
             sort_asc: true,
             ns_views: Vec::new(),
