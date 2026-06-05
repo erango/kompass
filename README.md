@@ -13,6 +13,8 @@ stays responsive on clusters of any size.
 
 <img src="docs/screenshot.png" alt="Kompass — Pods view with live metrics" width="900">
 
+<img src="docs/ph/kompass-demo.gif" alt="Kompass — command palette, live metrics, logs and exec" width="900">
+
 </div>
 
 ---
