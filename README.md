@@ -9,7 +9,11 @@
 Browse, inspect, and operate any cluster with a native, keyboard-driven UI that
 stays responsive on clusters of any size.
 
+<a href="https://www.producthunt.com/products/kompass-2?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-kompass-2" target="_blank" rel="noopener noreferrer"><img alt="Kompass - A beautiful, fast Kubernetes desktop app — built in Rust | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1164289&amp;theme=neutral&amp;t=1780669426370"></a>
+
 <img src="docs/screenshot.png" alt="Kompass — Pods view with live metrics" width="900">
+
+<img src="docs/ph/kompass-demo.gif" alt="Kompass — command palette, live metrics, logs and exec" width="900">
 
 </div>
 
