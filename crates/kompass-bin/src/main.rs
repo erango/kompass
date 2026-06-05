@@ -2030,6 +2030,20 @@ fn App() -> Element {
         hist_idx.set(n - 1);
     });
 
+    // Scroll shadow: cast a shadow under the pinned About footer onto the nav
+    // list, but only while the list overflows and there's content below the fold.
+    use_effect(move || {
+        dioxus::document::eval(
+            "if(!window.__navShadow){window.__navShadow=1;\
+             const f=()=>{const sc=document.querySelector('.nav-scroll'),nv=document.querySelector('.nav');\
+             if(!sc||!nv)return;const more=sc.scrollTop+sc.clientHeight<sc.scrollHeight-1;\
+             nv.classList.toggle('scroll-below',more);};\
+             const w=()=>{const sc=document.querySelector('.nav-scroll');if(!sc){setTimeout(w,80);return;}\
+             sc.addEventListener('scroll',f,{passive:true});new ResizeObserver(f).observe(sc);\
+             new MutationObserver(f).observe(sc,{childList:true,subtree:true,attributes:true});f();};w();}",
+        );
+    });
+
     // Apply ⌘[ / ⌘] navigation (peek everything but the tick to avoid loops).
     use_effect(move || {
         if nav_tick() == 0 {
@@ -2554,6 +2568,7 @@ fn App() -> Element {
                     {kompass_mark("brand-mark")}
                     span { class: "brand-word", "Kompass" }
                 }
+                div { class: "nav-scroll",
                 div { class: "nav-eyebrow", "Cluster" }
                 {
                     let ov_default = default_page() == "overview";
@@ -2660,8 +2675,8 @@ fn App() -> Element {
                         }
                     }
                 }
-                div { class: "nav-spacer" }
-                div { class: "nav-item",
+                }
+                div { class: "nav-item nav-about",
                     onclick: move |_| { about_open.set(true); check_update.call(()); },
                     {kompass_mark("")}
                     span { class: "label", "About Kompass" }
