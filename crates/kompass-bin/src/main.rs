@@ -130,15 +130,18 @@ const EXTRA_CSS: &str = r#"
   text-transform: uppercase; letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-faint); flex: none;
 }
-/* Close slot is always present (reserves space) — the × only reveals on hover
-   of a removable tab, so the button width never shifts. */
+/* No reserved space at rest: the button grows on hover to accommodate the ×.
+   The negative margin cancels the flex gap so the tab is fully compact idle. */
 .ns-close {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; flex: none; border-radius: var(--radius-sm);
+  width: 0; height: 16px; flex: none; overflow: hidden; border-radius: var(--radius-sm);
+  margin-left: calc(-1 * var(--sp-3));
   color: var(--fg-faint); cursor: pointer; opacity: 0;
-  transition: opacity var(--dur-fast), background var(--dur-fast);
+  transition: width var(--dur-fast) var(--ease-standard),
+              margin-left var(--dur-fast) var(--ease-standard),
+              opacity var(--dur-fast), background var(--dur-fast);
 }
-.ns-select.removable:hover .ns-close { opacity: 1; }
+.ns-select.removable:hover .ns-close { width: 16px; margin-left: 0; opacity: 1; }
 .ns-close:hover { background: var(--bg-raised); color: var(--fg-default); }
 .ns-close svg { width: 11px; height: 11px; }
 .ns-select.active { border-color: var(--accent); color: var(--fg-strong); }
@@ -2368,8 +2371,6 @@ fn App() -> Element {
                                                     onclick: move |e| { e.stop_propagation(); remove_view.call(i); },
                                                     {icon("i-x", "2.4")}
                                                 }
-                                            } else {
-                                                span { class: "ns-close" }
                                             }
                                         }
                                         if ns_open() {
