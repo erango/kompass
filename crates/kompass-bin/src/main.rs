@@ -2807,6 +2807,20 @@ fn App() -> Element {
                     if detail_full() { "main detail-open detail-fullscreen" } else { "main detail-open" }
                 } else { "main" },
                 style: "--detail-w: {detail_w()}px",
+                // Click-away backdrop: dims the list behind an open side panel
+                // and dismisses it on click. Skipped in fullscreen (the panel
+                // already covers everything).
+                if (detail().is_some() || multi_logs() > 0) && !detail_full() {
+                    div {
+                        class: "panel-scrim",
+                        onclick: move |_| {
+                            send_cmd(Cmd::StopLogs);
+                            multi_logs.set(0);
+                            detail.set(None);
+                            detail_full.set(false);
+                        },
+                    }
+                }
                 if multi_logs() > 0 {
                     MultiLogPanel {
                         logs,
