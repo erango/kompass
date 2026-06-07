@@ -425,6 +425,15 @@ const EXTRA_CSS: &str = r#"
 .data-btn:hover { background: var(--bg-raised); color: var(--fg-strong); }
 .data-btn svg { width: 15px; height: 15px; }
 .data-copy { margin-left: auto; }
+/* Copy button: swap copy icon → check on success, with a spring pop. */
+.copy-btn .copy-ico { display: inline-flex; align-items: center; justify-content: center; }
+.copy-btn.copied { color: var(--status-running); }
+.copy-btn.copied .copy-ico svg { animation: copy-pop 240ms cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes copy-pop {
+  0%   { transform: scale(.3); opacity: 0; }
+  55%  { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); }
+}
 .data-val {
   font-family: var(--font-mono); font-size: var(--text-small); color: var(--fg-default);
   background: var(--bg-inset); border-radius: var(--radius-md); padding: var(--sp-4);
@@ -728,6 +737,29 @@ struct NavMenu {
     key: String,
     label: String,
     is_default: bool,
+}
+
+/// A navigable view for ⌘[ / ⌘]. The full "where you are": page (overview vs a
+/// resource kind), which namespace-view tab, that tab's namespace, and the
+/// search filter. `filter` is updated in place on the current entry (so typing
+/// doesn't spam history) and restored on back/forward.
+#[derive(Clone, PartialEq)]
+struct ViewState {
+    overview: bool,
+    kind: String,
+    ns_active: usize,
+    namespace: Option<String>,
+    filter: String,
+}
+
+impl ViewState {
+    /// Identity for history dedup — everything except the live filter text.
+    fn same_place(&self, o: &ViewState) -> bool {
+        self.overview == o.overview
+            && self.kind == o.kind
+            && self.ns_active == o.ns_active
+            && self.namespace == o.namespace
+    }
 }
 
 /// A transient result notification.
@@ -1446,8 +1478,8 @@ fn App() -> Element {
     let mut palette_query = use_signal(String::new);
     let mut palette_sel = use_signal(|| 0usize);
 
-    // View history (kind + active namespace-view index) for ⌘[ / ⌘].
-    let mut hist = use_signal(Vec::<(String, usize)>::new);
+    // View history (full view = page + ns-view + namespace + filter) for ⌘[ / ⌘].
+    let mut hist = use_signal(Vec::<ViewState>::new);
     let mut hist_idx = use_signal(|| 0usize);
     // Nav request from ⌘[ / ⌘] — applied by an effect (after switch_kind exists).
     let mut nav_tick = use_signal(|| 0u32);
@@ -1592,6 +1624,10 @@ fn App() -> Element {
         detail_full.set(false);
         selected.write().clear();
         rows.set(cached);
+        // History is per-cluster: the namespace-view indices belong to this
+        // context, so reset it (the record effect reseeds for the new context).
+        hist.write().clear();
+        hist_idx.set(0);
     });
 
 
@@ -2047,11 +2083,20 @@ fn App() -> Element {
         switch_kind.call("pods".to_string());
     });
 
-    // Record (kind, ns-view index) into history whenever it changes (not via nav).
-    // Switching namespace-view tabs is the navigable unit; changing the namespace
-    // *within* a view keeps the same index, so it doesn't pollute history.
+    // Record a history entry whenever the *place* changes — page (overview vs a
+    // kind), the namespace-view tab, or that tab's namespace. Namespace changes
+    // (dropdown, in place) and Overview are now navigable. The filter is only a
+    // snapshot here; typing alone never pushes a new entry (kept in sync below).
     use_effect(move || {
-        let cur = (kind(), ns_active());
+        let k = kind();
+        let a = ns_active();
+        let cur = ViewState {
+            overview: overview_on(),
+            kind: k.clone(),
+            ns_active: a,
+            namespace: ns_views().get(a).cloned().flatten(),
+            filter: queries.peek().get(&(k, a)).cloned().unwrap_or_default(),
+        };
         let mut h = hist.write();
         let i = *hist_idx.peek();
         if h.is_empty() {
@@ -2060,7 +2105,7 @@ fn App() -> Element {
             hist_idx.set(0);
             return;
         }
-        if h.get(i) == Some(&cur) {
+        if h[i].same_place(&cur) {
             return;
         }
         h.truncate(i + 1);
@@ -2068,6 +2113,21 @@ fn App() -> Element {
         let n = h.len();
         drop(h);
         hist_idx.set(n - 1);
+    });
+
+    // Keep the current entry's filter in sync as the user types — updates the
+    // entry in place (no new history entry) so back/forward restores the filter.
+    use_effect(move || {
+        let k = kind();
+        let a = ns_active();
+        let f = queries().get(&(k.clone(), a)).cloned().unwrap_or_default();
+        let i = *hist_idx.peek();
+        let mut h = hist.write();
+        if let Some(e) = h.get_mut(i) {
+            if e.kind == k && e.ns_active == a && e.overview == *overview_on.peek() && e.filter != f {
+                e.filter = f;
+            }
+        }
     });
 
     // Scroll shadow: cast a shadow under the pinned About footer onto the nav
@@ -2099,13 +2159,32 @@ fn App() -> Element {
             if i + 1 >= h.len() { return; }
             i + 1
         };
-        let (k, idx) = h[ni].clone();
+        let v = h[ni].clone();
         hist_idx.set(ni);
-        if *kind.peek() != k {
-            switch_kind.call(k);
+
+        // Page: switch kind first (it resets overview_on), then set the flag.
+        if *kind.peek() != v.kind {
+            switch_kind.call(v.kind.clone());
         }
-        let clamped = idx.min(ns_views.peek().len().saturating_sub(1));
-        ns_active.set(clamped);
+        overview_on.set(v.overview);
+
+        // Namespace-view tab + restore that tab's namespace.
+        let idx = v.ns_active.min(ns_views.peek().len().saturating_sub(1));
+        {
+            let mut nv = ns_views.write();
+            if idx < nv.len() {
+                nv[idx] = v.namespace.clone();
+            }
+        }
+        ns_active.set(idx);
+
+        // Filter for this view.
+        let key = (v.kind.clone(), idx);
+        if v.filter.is_empty() {
+            queries.write().remove(&key);
+        } else {
+            queries.write().insert(key, v.filter.clone());
+        }
     });
 
     // Delete request: Pods delete immediately; everything else confirms first.
@@ -3262,11 +3341,11 @@ fn App() -> Element {
                         span { class: "ub-mark", {kompass_mark("")} }
                         span { class: "ub-text", "Kompass " b { "{ver}" } " is available." }
                         if via_brew {
-                            button {
-                                class: "ub-btn tip", "data-tip": "Copy to clipboard",
-                                onclick: move |_| { dioxus::document::eval("navigator.clipboard && navigator.clipboard.writeText('brew upgrade --cask kompass')"); },
-                                {icon("i-copy", "1.7")}
-                                "brew upgrade"
+                            CopyButton {
+                                text: "brew upgrade --cask kompass".to_string(),
+                                class: "ub-btn tip".to_string(),
+                                tip: "Copy to clipboard".to_string(),
+                                label: "brew upgrade".to_string(),
                             }
                         } else {
                             button {
@@ -4341,6 +4420,37 @@ fn copy_to_clipboard(text: &str) {
     dioxus::document::eval(&format!("navigator.clipboard.writeText({json});"));
 }
 
+/// A copy-to-clipboard button that flips its icon to a checkmark for 2s on
+/// success (animated pop), then reverts. `class` is merged with `copy-btn`.
+#[component]
+fn CopyButton(
+    text: String,
+    #[props(default)] class: String,
+    #[props(default)] tip: Option<String>,
+    #[props(default)] label: Option<String>,
+) -> Element {
+    let mut copied = use_signal(|| false);
+    let cls = format!("{class} copy-btn{}", if copied() { " copied" } else { "" });
+    rsx! {
+        button {
+            class: "{cls}",
+            "data-tip": tip,
+            onclick: move |_| {
+                copy_to_clipboard(&text);
+                copied.set(true);
+                spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    copied.set(false);
+                });
+            },
+            span { class: "copy-ico",
+                if copied() { {icon("i-check", "1.7")} } else { {icon("i-copy", "1.7")} }
+            }
+            if let Some(l) = label { "{l}" }
+        }
+    }
+}
+
 /// Data tab for ConfigMaps (plain) and Secrets (masked by default, per-key
 /// reveal, base64-decoded on reveal).
 #[component]
@@ -4390,10 +4500,9 @@ fn DataTab(
                                             if shown { {icon("i-eye-off", "1.7")} } else { {icon("i-eye", "1.7")} }
                                         }
                                     }
-                                    button {
-                                        class: "data-btn data-copy",
-                                        onclick: move |_| copy_to_clipboard(&copy_val),
-                                        {icon("i-copy", "1.7")}
+                                    CopyButton {
+                                        text: copy_val,
+                                        class: "data-btn data-copy".to_string(),
                                     }
                                 }
                                 if shown {
