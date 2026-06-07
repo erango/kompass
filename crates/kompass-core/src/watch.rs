@@ -58,11 +58,15 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
     if let Some(ns) = &scope_ns {
         let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
     }
+    // The namespace the UI is viewing (None = all). Watches scope to it when set
+    // (cheaper than cluster-wide on big clusters). A forced `scope_ns` wins.
+    let mut view_ns: Option<String> = None;
 
     let mut registry = core_registry();
     let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
     let mut active = "deployments.apps".to_string();
-    let mut watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns);
+    let mut watch_task =
+        start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
     let mut log_task: Option<JoinHandle<()>> = None;
     // Metrics poller runs only while a view needs it (toggled by SetMetrics).
     let mut metrics_on = false;
@@ -89,7 +93,18 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                 }
                 let _ = tx.send(Delta::Reset);
                 let _ = tx.send(Delta::Conn(ConnState::Connecting));
-                watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns);
+                watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
+            }
+            Cmd::SetNamespace(ns) => {
+                if view_ns != ns {
+                    view_ns = ns;
+                    if let Some(h) = watch_task.take() {
+                        h.abort();
+                    }
+                    let _ = tx.send(Delta::Reset);
+                    let _ = tx.send(Delta::Conn(ConnState::Connecting));
+                    watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
+                }
             }
             Cmd::SetContext(name) => {
                 if let Some(h) = watch_task.take() {
@@ -118,9 +133,10 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                         if let Some(ns) = &scope_ns {
                             let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
                         }
+                        view_ns = None; // UI re-sends the new cluster's view ns
                         registry = core_registry();
                         let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
-                        watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns);
+                        watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
                         let full = discover(&client).await;
                         for (id, entry) in full {
                             registry.entry(id).or_insert(entry);

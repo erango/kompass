@@ -1321,6 +1321,17 @@ fn App() -> Element {
         }
     });
 
+    // Scope the engine's watches to the active namespace view. Watching one
+    // namespace is far cheaper than cluster-wide on big clusters (e.g. listing
+    // every Secret across all namespaces), so this fixes slow-loading kinds.
+    // "All namespaces" (None) keeps the cluster-wide watch. The engine handler
+    // is idempotent, so re-sending on unrelated changes is harmless.
+    use_effect(move || {
+        let _ = context(); // re-send after a context switch (engine resets it)
+        let active_ns = ns_views().get(ns_active()).cloned().flatten();
+        send_cmd(Cmd::SetNamespace(active_ns));
+    });
+
     // Persist preferences whenever the relevant inputs change.
     use_effect(move || {
         let (sk, sa) = sort();

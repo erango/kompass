@@ -394,6 +394,10 @@ pub enum Cmd {
     FetchOverview,
     /// Fetch events for a single object (detail panel Events tab).
     FetchEvents { namespace: String, name: String },
+    /// Set the namespace the watches are scoped to (None = all namespaces).
+    /// Watching a single namespace is far cheaper than cluster-wide on big
+    /// clusters (e.g. listing every Secret across all namespaces).
+    SetNamespace(Option<String>),
     /// Fetch the pods owned by a controller (Deployment/StatefulSet/…) for its
     /// detail panel.
     FetchControllerPods { kind_id: String, namespace: String, name: String },
