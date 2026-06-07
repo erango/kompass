@@ -174,6 +174,8 @@ pub enum Delta {
     Overview(OverviewData),
     /// Events for the object shown in the detail panel (newest first).
     Events(Vec<EventRow>),
+    /// Pods owned by the controller shown in the detail panel.
+    ControllerPods(Vec<ResourceRow>),
     /// The connection lacks cluster-wide list access; the engine fell back to
     /// watching this single namespace (from the kubeconfig context).
     ScopedNamespace(String),
@@ -392,6 +394,9 @@ pub enum Cmd {
     FetchOverview,
     /// Fetch events for a single object (detail panel Events tab).
     FetchEvents { namespace: String, name: String },
+    /// Fetch the pods owned by a controller (Deployment/StatefulSet/…) for its
+    /// detail panel.
+    FetchControllerPods { kind_id: String, namespace: String, name: String },
     /// Enable/disable the background metrics poller (skip when unused).
     SetMetrics(bool),
     /// Stream merged logs across multiple pods (namespace, name).

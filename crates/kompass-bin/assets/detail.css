@@ -71,6 +71,24 @@
 /* ---------- Summary tab ---------- */
 .sum { padding: var(--sp-7); display: flex; flex-direction: column; gap: var(--sp-8); }
 .sum-group { display: flex; flex-direction: column; gap: var(--sp-5); }
+/* Pods list in a controller's Summary */
+.sum-pods-head { display: flex; align-items: center; justify-content: space-between; }
+.sum-pods-head .btn-sm { height: 24px; padding: 0 var(--sp-3); font-size: var(--text-small); gap: var(--sp-2); }
+.sum-pods-head .btn-sm svg { width: 13px; height: 13px; }
+.sp-list { display: flex; flex-direction: column; gap: 1px; }
+.sp-row {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-md); cursor: pointer;
+}
+.sp-row:hover { background: var(--bg-raised); }
+.sp-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--status-neutral); }
+.sp-dot.running { background: var(--status-running); }
+.sp-dot.pending { background: var(--status-pending); }
+.sp-dot.failed { background: var(--status-failed); }
+.sp-dot.neutral { background: var(--status-neutral); }
+.sp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-small); color: var(--fg-default); }
+.sp-meta { font-size: var(--text-micro); color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.sp-age { font-size: var(--text-micro); color: var(--fg-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sum-group > h4 {
   margin: 0; font-size: var(--text-micro); font-weight: var(--fw-semibold);
   text-transform: uppercase; letter-spacing: var(--tracking-eyebrow); color: var(--fg-faint);

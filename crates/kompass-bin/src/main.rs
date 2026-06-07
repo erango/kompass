@@ -1234,6 +1234,8 @@ fn App() -> Element {
     let mut overview_on = use_signal(|| boot_page == "overview");
     let mut overview = use_signal(|| None::<OverviewData>);
     let mut events = use_signal(Vec::<EventRow>::new);
+    // Pods owned by the controller shown in the detail panel (workloads only).
+    let mut ctrl_pods = use_signal(Vec::<ResourceRow>::new);
     // Last metrics-enabled value sent to the engine (gates the poller).
     let mut metrics_sent = use_signal(|| false);
     // Pending delete confirmation (None = no dialog).
@@ -1579,12 +1581,21 @@ fn App() -> Element {
         manifest_err.set(None);
         logs.write().clear();
         events.write().clear();
+        ctrl_pods.write().clear();
         detail_tab.set(tab);
         send_cmd(Cmd::FetchManifest {
             kind_id: target.kind_id.clone(),
             namespace: target.namespace.clone(),
             name: target.name.clone(),
         });
+        // Workloads: list their pods for the Summary section.
+        if is_workload(&target.kind_name) {
+            send_cmd(Cmd::FetchControllerPods {
+                kind_id: target.kind_id.clone(),
+                namespace: target.namespace.clone(),
+                name: target.name.clone(),
+            });
+        }
         if matches!(tab, DetailTab::Logs) {
             send_cmd(Cmd::StartLogs {
                 kind_id: target.kind_id.clone(),
@@ -1654,6 +1665,7 @@ fn App() -> Element {
                 }
                 Delta::PortForwards(v) => port_forwards.set(v),
                 Delta::Events(v) => events.set(v),
+                Delta::ControllerPods(v) => ctrl_pods.set(v),
                 Delta::ScopedNamespace(ns) => {
                     // No cluster-wide access — lock the view to the one namespace
                     // the connection can list (from the kubeconfig context).
@@ -2005,6 +2017,12 @@ fn App() -> Element {
         rows.set(cached);
         kind.set(id.clone());
         send_cmd(Cmd::SetKind(id));
+    });
+
+    // One-click: jump to the Pods view filtered to a controller's name.
+    let view_pods_for = use_callback(move |name: String| {
+        queries.write().insert(("pods".to_string(), ns_active()), name);
+        switch_kind.call("pods".to_string());
     });
 
     // Record (kind, ns-view index) into history whenever it changes (not via nav).
@@ -2712,6 +2730,9 @@ fn App() -> Element {
                         ask_delete,
                         port_forwards: port_forwards(),
                         events: events(),
+                        ctrl_pods: ctrl_pods(),
+                        on_open: open_detail,
+                        on_view_pods: view_pods_for,
                     }
                 }
                 if overview_on() {
@@ -3745,6 +3766,9 @@ fn DetailPanel(
     ask_delete: EventHandler<DeleteReq>,
     port_forwards: Vec<PortForward>,
     events: Vec<EventRow>,
+    ctrl_pods: Vec<ResourceRow>,
+    on_open: EventHandler<OpenReq>,
+    on_view_pods: EventHandler<String>,
 ) -> Element {
     let mut cls = String::from("detail open enter");
     if detail_full() {
@@ -3954,7 +3978,7 @@ fn DetailPanel(
             // ===== Body =====
             div { class: "detail-body",
                 match tab {
-                    DetailTab::Summary => rsx! { SummaryTab { target: target.clone(), manifest, manifest_err, port_forwards: port_forwards.clone() } },
+                    DetailTab::Summary => rsx! { SummaryTab { target: target.clone(), manifest, manifest_err, port_forwards: port_forwards.clone(), ctrl_pods: ctrl_pods.clone(), on_open, on_view_pods } },
                     DetailTab::Data => rsx! { DataTab { key: "{target.namespace}/{target.name}", kind_name: target.kind_name.clone(), manifest, manifest_err } },
                     DetailTab::Yaml => rsx! {
                         YamlTab {
@@ -4047,6 +4071,9 @@ fn SummaryTab(
     manifest: Signal<Option<String>>,
     manifest_err: Signal<Option<String>>,
     port_forwards: Vec<PortForward>,
+    #[props(default)] ctrl_pods: Vec<ResourceRow>,
+    #[props(default)] on_open: Option<EventHandler<OpenReq>>,
+    #[props(default)] on_view_pods: Option<EventHandler<String>>,
 ) -> Element {
     let m = manifest();
     let summary = m.as_deref().and_then(parse_summary);
@@ -4192,6 +4219,61 @@ fn SummaryTab(
                                             }),
                                             {icon("i-network", "1.7")}
                                             "Forward"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if is_workload(&target.kind_name) {
+                div { class: "sum-group",
+                    div { class: "sum-pods-head",
+                        h4 { "Pods" }
+                        if let Some(h) = on_view_pods {
+                            {
+                                let nm = target.name.clone();
+                                rsx! {
+                                    button {
+                                        class: "btn btn-ghost btn-sm",
+                                        onclick: move |_| h.call(nm.clone()),
+                                        "View all"
+                                        {icon("i-arrow-right", "1.8")}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if ctrl_pods.is_empty() {
+                        div { class: "detail-empty", "No pods." }
+                    } else {
+                        div { class: "sp-list",
+                            for p in ctrl_pods.iter() {
+                                {
+                                    let ready = p.cols.first().cloned().unwrap_or_default();
+                                    let t = DetailTarget {
+                                        kind_id: "pods".into(),
+                                        kind_name: "Pod".into(),
+                                        namespace: p.namespace.clone(),
+                                        name: p.name.clone(),
+                                        status: p.status.clone(),
+                                        status_class: p.status_class.clone(),
+                                        cols: p.cols.clone(),
+                                        age: p.age.clone(),
+                                    };
+                                    rsx! {
+                                        div {
+                                            class: "sp-row",
+                                            onclick: move |_| {
+                                                if let Some(h) = on_open {
+                                                    h.call(OpenReq { target: t.clone(), tab: DetailTab::Summary });
+                                                }
+                                            },
+                                            span { class: "sp-dot {p.status_class}" }
+                                            span { class: "sp-name", "{p.name}" }
+                                            span { class: "sp-meta", "{ready}" }
+                                            span { class: "sp-age", "{p.age}" }
                                         }
                                     }
                                 }

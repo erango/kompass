@@ -217,6 +217,12 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                 let (c, t) = (client.clone(), tx.clone());
                 tokio::spawn(async move { fetch_events(c, namespace, name, t).await });
             }
+            Cmd::FetchControllerPods { kind_id, namespace, name } => {
+                if let Some(e) = registry.get(&kind_id).cloned() {
+                    let (c, t) = (client.clone(), tx.clone());
+                    tokio::spawn(async move { fetch_controller_pods(c, e, namespace, name, t).await });
+                }
+            }
             Cmd::SetMetrics(on) => {
                 if on != metrics_on {
                     metrics_on = on;
@@ -585,6 +591,57 @@ async fn fetch_events(client: Client, namespace: String, name: String, tx: Unbou
         Err(_) => Vec::new(),
     };
     let _ = tx.send(Delta::Events(rows));
+}
+
+/// List the pods owned by a controller (via its `spec.selector.matchLabels`),
+/// normalized into rows for the detail panel.
+async fn fetch_controller_pods(
+    client: Client,
+    entry: KindEntry,
+    namespace: String,
+    name: String,
+    tx: UnboundedSender<Delta>,
+) {
+    let ctrl: Api<DynamicObject> = Api::namespaced_with(client.clone(), &namespace, &entry.ar);
+    let obj = match ctrl.get(&name).await {
+        Ok(o) => o,
+        Err(_) => {
+            let _ = tx.send(Delta::ControllerPods(Vec::new()));
+            return;
+        }
+    };
+    let selector = obj.data["spec"]["selector"]["matchLabels"]
+        .as_object()
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| v.as_str().map(|v| format!("{k}={v}")))
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_default();
+    if selector.is_empty() {
+        let _ = tx.send(Delta::ControllerPods(Vec::new()));
+        return;
+    }
+    let pod_ar = kube::api::ApiResource::erase::<Pod>(&());
+    let pods: Api<DynamicObject> = Api::namespaced_with(client, &namespace, &pod_ar);
+    let rows = match pods.list(&ListParams::default().labels(&selector)).await {
+        Ok(l) => l
+            .items
+            .into_iter()
+            .map(|o| {
+                normalize(
+                    "Pod",
+                    o.metadata.namespace.clone().unwrap_or_default(),
+                    o.metadata.name.clone().unwrap_or_default(),
+                    o.metadata.creation_timestamp.as_ref(),
+                    &o.data,
+                )
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    let _ = tx.send(Delta::ControllerPods(rows));
 }
 
 fn pct(used: i64, cap: i64) -> u8 {
