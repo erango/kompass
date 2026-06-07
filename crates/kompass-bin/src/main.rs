@@ -124,13 +124,21 @@ const EXTRA_CSS: &str = r#"
 .ns-wrap { position: relative; display: inline-flex; align-items: center; }
 /* Namespace view tabs */
 .ns-tabs { display: flex; align-items: center; gap: var(--sp-3); }
+/* "ns" label sitting to the left of the view tabs */
+.ns-eyebrow {
+  font-size: var(--text-micro); font-weight: var(--fw-semibold);
+  text-transform: uppercase; letter-spacing: var(--tracking-eyebrow);
+  color: var(--fg-faint); flex: none;
+}
+/* Close slot is always present (reserves space) — the × only reveals on hover
+   of a removable tab, so the button width never shifts. */
 .ns-close {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; margin-left: 2px; border-radius: var(--radius-sm);
+  width: 16px; height: 16px; flex: none; border-radius: var(--radius-sm);
   color: var(--fg-faint); cursor: pointer; opacity: 0;
   transition: opacity var(--dur-fast), background var(--dur-fast);
 }
-.ns-tab:hover .ns-close, .ns-wrap:hover .ns-close { opacity: 1; }
+.ns-select.removable:hover .ns-close { opacity: 1; }
 .ns-close:hover { background: var(--bg-raised); color: var(--fg-default); }
 .ns-close svg { width: 11px; height: 11px; }
 .ns-select.active { border-color: var(--accent); color: var(--fg-strong); }
@@ -2335,6 +2343,8 @@ fn App() -> Element {
                     }
                 }
 
+                div { class: "topbar-divider" }
+                span { class: "ns-eyebrow", "ns" }
                 div { class: "ns-tabs", onmousedown: move |e| e.stop_propagation(),
                     {
                         let nview_count = ns_views().len();
@@ -2348,17 +2358,18 @@ fn App() -> Element {
                                 rsx! {
                                     div { class: "ns-wrap",
                                         button {
-                                            class: "ns-select active",
+                                            class: if multi { "ns-select active removable" } else { "ns-select active" },
                                             onclick: move |_| { ns_query.set(String::new()); ns_hl.set(0); ns_open.toggle(); },
-                                            span { class: "label", "ns" }
                                             span { class: "val", "{vlabel}" }
                                             span { class: "chev", {icon("i-chev-down", "2")} }
-                                        }
-                                        if multi {
-                                            span {
-                                                class: "ns-close",
-                                                onclick: move |e| { e.stop_propagation(); remove_view.call(i); },
-                                                {icon("i-x", "2.4")}
+                                            if multi {
+                                                span {
+                                                    class: "ns-close",
+                                                    onclick: move |e| { e.stop_propagation(); remove_view.call(i); },
+                                                    {icon("i-x", "2.4")}
+                                                }
+                                            } else {
+                                                span { class: "ns-close" }
                                             }
                                         }
                                         if ns_open() {
@@ -2453,15 +2464,13 @@ fn App() -> Element {
                             } else {
                                 rsx! {
                                     div {
-                                        class: "ns-select ns-tab",
+                                        class: "ns-select ns-tab removable",
                                         onclick: move |_| { ns_open.set(false); ns_active.set(i); },
                                         span { class: "val", "{vlabel}" }
-                                        if multi {
-                                            span {
-                                                class: "ns-close",
-                                                onclick: move |e| { e.stop_propagation(); remove_view.call(i); },
-                                                {icon("i-x", "2.4")}
-                                            }
+                                        span {
+                                            class: "ns-close",
+                                            onclick: move |e| { e.stop_propagation(); remove_view.call(i); },
+                                            {icon("i-x", "2.4")}
                                         }
                                     }
                                 }
