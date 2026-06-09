@@ -786,6 +786,11 @@ async fn discover(client: &Client) -> Registry {
     if let Ok(disc) = Discovery::new(client.clone()).run().await {
         for group in disc.groups() {
             for (ar, caps) in group.recommended_resources() {
+                // `events.k8s.io/v1 Event` duplicates core `v1 Event` — keep the
+                // core one (already registered) so the nav shows a single Events.
+                if ar.group == "events.k8s.io" && ar.kind == "Event" {
+                    continue;
+                }
                 let namespaced = caps.scope == Scope::Namespaced;
                 let id = KindMeta {
                     group: ar.group.clone(),
