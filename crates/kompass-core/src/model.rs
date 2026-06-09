@@ -179,6 +179,10 @@ pub enum Delta {
     /// The connection lacks cluster-wide list access; the engine fell back to
     /// watching this single namespace (from the kubeconfig context).
     ScopedNamespace(String),
+    /// The cluster's namespace list (for the namespace filter dropdown), kept
+    /// independent of the active kind — cluster-scoped views (Nodes, PVs) carry
+    /// no namespace and would otherwise leave the picker empty.
+    Namespaces(Vec<String>),
 
     // ---- Exec / terminal ----
     /// A new exec session started — clear the terminal.

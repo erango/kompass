@@ -1266,6 +1266,9 @@ fn App() -> Element {
         if boot_page == "overview" { "deployments.apps".to_string() } else { boot_page.clone() }
     });
     let mut catalog = use_signal(Vec::<KindMeta>::new);
+    // Cluster namespace list for the filter dropdown — kept independent of the
+    // active kind so cluster-scoped views (Nodes, PVs) don't empty the picker.
+    let mut all_namespaces = use_signal(BTreeSet::<String>::new);
     // Live usage: "namespace/name" → (cpu_milli, mem_bytes).
     let mut metrics = use_signal(std::collections::HashMap::<String, (i64, i64)>::new);
     // Usage history per key for sparklines: (cpu_series, mem_series).
@@ -1724,6 +1727,7 @@ fn App() -> Element {
                 Delta::PortForwards(v) => port_forwards.set(v),
                 Delta::Events(v) => events.set(v),
                 Delta::ControllerPods(v) => ctrl_pods.set(v),
+                Delta::Namespaces(v) => all_namespaces.set(v.into_iter().collect()),
                 Delta::ScopedNamespace(ns) => {
                     // No cluster-wide access — lock the view to the one namespace
                     // the connection can list (from the kubeconfig context).
@@ -1872,8 +1876,13 @@ fn App() -> Element {
     );
 
     let all_rows = rows();
-    // Distinct namespaces for the namespace dropdown.
-    let namespaces: BTreeSet<String> = all_rows.iter().map(|r| r.namespace.clone()).collect();
+    // Namespaces for the dropdown: the cluster list (kind-independent) plus any
+    // seen in the current rows, minus the empty namespace of cluster-scoped kinds.
+    let namespaces: BTreeSet<String> = all_namespaces()
+        .into_iter()
+        .chain(all_rows.iter().map(|r| r.namespace.clone()))
+        .filter(|n| !n.is_empty())
+        .collect();
     // Distinct statuses (status, class) for the status filter dropdown.
     let mut statuses: Vec<(String, String)> = Vec::new();
     for r in all_rows.iter() {
@@ -1930,9 +1939,16 @@ fn App() -> Element {
     let query_key = (kind(), ns_active());
     let query_val = queries().get(&query_key).cloned().unwrap_or_default();
     let q = query_val.to_lowercase();
+    // Cluster-scoped kinds (Node, PersistentVolume, Namespace…) carry no
+    // namespace, so a single-namespace view must not filter them all out.
+    let kind_namespaced = catalog()
+        .iter()
+        .find(|m| m.id() == kind())
+        .map(|m| m.namespaced)
+        .unwrap_or(true);
     let mut view: Vec<ResourceRow> = all_rows
         .into_iter()
-        .filter(|r| active_ns.as_ref().is_none_or(|ns| &r.namespace == ns))
+        .filter(|r| !kind_namespaced || active_ns.as_ref().is_none_or(|ns| &r.namespace == ns))
         .filter(|r| active_status.as_ref().is_none_or(|s| &r.status == s))
         .filter(|r| {
             q.is_empty()

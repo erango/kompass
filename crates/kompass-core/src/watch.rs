@@ -88,6 +88,7 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
     if let Some(ns) = &scope_ns {
         let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
     }
+    refresh_namespaces(&client, &tx, &scope_ns);
 
     let mut watch_task =
         start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
@@ -145,6 +146,7 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                         if let Some(ns) = &scope_ns {
                             let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
                         }
+                        refresh_namespaces(&client, &tx, &scope_ns);
                     }
                     Err(e) => {
                         let _ = tx.send(Delta::Conn(ConnState::Error(e.to_string())));
@@ -179,6 +181,7 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                         if let Some(ns) = &scope_ns {
                             let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
                         }
+                        refresh_namespaces(&client, &tx, &scope_ns);
                         view_ns = None; // UI re-sends the new cluster's view ns
                         registry = core_registry();
                         let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
@@ -841,6 +844,27 @@ async fn detect_scope(client: &Client, ctx: &Option<String>) -> Option<String> {
         Err(kube::Error::Api(e)) if e.code == 403 => Some(ctx_ns),
         _ => None,
     }
+}
+
+/// Fetch the cluster's namespace list for the filter dropdown and emit it.
+/// Spawned so it never blocks the connect path. On a namespace-scoped
+/// connection (cluster-wide list forbidden) it reports just the scoped one.
+fn refresh_namespaces(client: &Client, tx: &UnboundedSender<Delta>, scope: &Option<String>) {
+    let client = client.clone();
+    let tx = tx.clone();
+    let scope = scope.clone();
+    tokio::spawn(async move {
+        use k8s_openapi::api::core::v1::Namespace;
+        let list = match Api::<Namespace>::all(client).list(&ListParams::default()).await {
+            Ok(l) => {
+                let mut v: Vec<String> = l.items.into_iter().filter_map(|n| n.metadata.name).collect();
+                v.sort();
+                v
+            }
+            Err(_) => scope.clone().into_iter().collect(),
+        };
+        let _ = tx.send(Delta::Namespaces(list));
+    });
 }
 
 /// Rebuild a client (fresh credentials) for the active context.
