@@ -17,10 +17,12 @@ use dioxus::desktop::tao::window::Icon;
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use kompass_core::{
-    cluster_accent_index, columns_for, container_states_from_yaml, has_logs, has_metrics,
-    is_data_kind, is_workload, list_contexts, run_engine, Cmd, ConnState, ContainerState, Delta,
-    EventRow, KindMeta, OverviewData, PortForward, ResourceRow,
+    cluster_accent_index, columns_for, container_states_from_yaml, cr_icon_key, cr_tint, has_logs,
+    has_metrics, is_data_kind, is_workload, kind_description, list_contexts, run_engine, Cmd,
+    ConnState, ContainerState, Delta, EventRow, KindMeta, OverviewData, PortForward, ResourceRow,
 };
+
+mod cr_logos;
 use std::collections::BTreeSet;
 use std::sync::{Mutex, OnceLock};
 use tokio::sync::mpsc::unbounded_channel;
@@ -1131,6 +1133,38 @@ fn icon(id: &str, stroke_width: &str) -> Element {
             dangerous_inner_html: "{inner}",
         }
     }
+}
+
+/// Standard base64 (no line breaks) — for embedding SVGs as data URIs.
+fn base64(input: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[(n >> 18 & 63) as usize] as char);
+        out.push(T[(n >> 12 & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[(n >> 6 & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+/// Distinct tints for the generic fallback glyph (kinds with no known logo).
+const CR_TINTS: [&str; 6] = ["#6366f1", "#0ea5a4", "#f59e0b", "#f43f5e", "#22c55e", "#a855f7"];
+
+/// Icon for a custom-resource kind: the project's full-color logo when its API
+/// group is recognized, otherwise a generic glyph tinted by a stable hash of the
+/// group (so different operators stay visually distinct).
+fn cr_kind_icon(group: &str) -> Element {
+    if let Some(svg) = cr_icon_key(group).and_then(cr_logos::cr_logo_svg) {
+        let uri = format!("data:image/svg+xml;base64,{}", base64(svg.as_bytes()));
+        return rsx! { img { class: "cr-ico", src: "{uri}", alt: "" } };
+    }
+    let tint = CR_TINTS[cr_tint(group)];
+    rsx! { span { class: "cr-ico cr-glyph", style: "color: {tint}", {icon("i-cr", "1.8")} } }
 }
 
 /// A row in the cluster switcher: accent dot + name + pin toggle (+ active check).
@@ -2781,6 +2815,9 @@ fn App() -> Element {
                                                             let p = e.client_coordinates();
                                                             nav_menu.set(Some(NavMenu { x: p.x, y: p.y, key: id_ctx.clone(), label: ctx_label.clone(), is_default }));
                                                         },
+                                                        if m.category() == "Custom Resources" {
+                                                            {cr_kind_icon(&m.group)}
+                                                        }
                                                         span { class: "label", "{label}" }
                                                         span { class: "nav-right",
                                                             if is_default {
@@ -2877,6 +2914,16 @@ fn App() -> Element {
                             if total > 0 {
                                 span { class: "list-count tnum", "{total}" }
                             }
+                            if !kind_namespaced {
+                                span {
+                                    class: "scope-badge tip tip-below",
+                                    "data-tip": "This kind isn't tied to a namespace — it's shown for the whole cluster.",
+                                    "Cluster-scoped"
+                                }
+                            }
+                        }
+                        if let Some(desc) = kind_description(&kind_name) {
+                            p { class: "list-subtitle", "{desc}" }
                         }
                         div { class: "toolbar",
                             SearchBox {

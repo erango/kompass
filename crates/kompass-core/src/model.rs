@@ -61,6 +61,117 @@ pub fn category_for(kind: &str, group: &str) -> &'static str {
     }
 }
 
+/// Map a CRD's API group to a known project/operator icon key. The group is the
+/// stable identity (e.g. every `*.strimzi.io` kind belongs to Strimzi), so one
+/// logo covers all of a project's CRDs. Returns `None` for unrecognized groups
+/// (those fall back to a tinted generic glyph via [`cr_tint`]).
+pub fn cr_icon_key(group: &str) -> Option<&'static str> {
+    let g = group;
+    let key = if g == "monitoring.coreos.com" {
+        "prometheus"
+    } else if g.ends_with("strimzi.io") {
+        "strimzi"
+    } else if g.ends_with("k8s.elastic.co") {
+        "elastic"
+    } else if g.ends_with("external-secrets.io") {
+        "external-secrets"
+    } else if g.ends_with("kyverno.io") {
+        "kyverno"
+    } else if g.ends_with("envoyproxy.io") {
+        "envoy"
+    } else if g.starts_with("gateway.networking.") {
+        "gateway-api"
+    } else if g.ends_with("cert-manager.io") {
+        "cert-manager"
+    } else if g == "argoproj.io" {
+        "argo"
+    } else if g.starts_with("karpenter.") {
+        "karpenter"
+    } else if g == "opentelemetry.io" {
+        "opentelemetry"
+    } else if g.ends_with("k8ssandra.io") || g.ends_with("datastax.com") || g.contains("cassandra") {
+        "cassandra"
+    } else if g == "k6.io" {
+        "k6"
+    } else if g.ends_with("k8s.aws") || g.ends_with("k8s.amazonaws.com") {
+        "aws"
+    } else if g == "externaldns.k8s.io" {
+        "external-dns"
+    } else if g.ends_with("snapshot.storage.k8s.io")
+        || g == "autoscaling.k8s.io"
+        || g.ends_with("x-k8s.io")
+    {
+        "kubernetes"
+    } else {
+        return None;
+    };
+    Some(key)
+}
+
+/// Stable palette index (0..6) for a CRD group with no known logo, so different
+/// operators get visually distinct tinted fallback glyphs.
+pub fn cr_tint(group: &str) -> usize {
+    let sum: u32 = group.bytes().map(|b| b as u32).sum();
+    (sum % 6) as usize
+}
+
+/// One-line description of a well-known kind, shown under the page title.
+/// Returns `None` for kinds we don't have a blurb for (e.g. arbitrary CRDs).
+pub fn kind_description(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        // Workloads
+        "Pod" => "The smallest deployable unit — one or more containers that run together.",
+        "Deployment" => "Manages a replicated, self-healing set of Pods and rolls out updates.",
+        "StatefulSet" => "Manages Pods with stable network identities and persistent storage.",
+        "DaemonSet" => "Runs a copy of a Pod on every (or selected) node.",
+        "ReplicaSet" => "Keeps a stable number of replica Pods running (usually owned by a Deployment).",
+        "Job" => "Runs Pods to completion for a finite, one-off task.",
+        "CronJob" => "Creates Jobs on a repeating schedule.",
+        // Network
+        "Service" => "A stable network endpoint that load-balances across a set of Pods.",
+        "Ingress" => "HTTP/HTTPS routing rules from outside the cluster to Services.",
+        "IngressClass" => "Selects which controller implements a set of Ingresses.",
+        "Endpoints" => "The backing Pod IPs and ports a Service routes to.",
+        "EndpointSlice" => "Scalable grouping of the network endpoints behind a Service.",
+        "NetworkPolicy" => "Firewall rules controlling allowed Pod-to-Pod traffic.",
+        // Config
+        "ConfigMap" => "Non-confidential configuration data injected into Pods.",
+        "Secret" => "Sensitive data (tokens, keys, certs) made available to Pods.",
+        // Storage
+        "PersistentVolumeClaim" => "A request for storage that binds to a PersistentVolume.",
+        "PersistentVolume" => "A piece of cluster storage provisioned for use by Pods.",
+        "StorageClass" => "Describes a class of storage and how volumes are dynamically provisioned.",
+        "VolumeAttachment" => "Tracks attaching a volume to a node.",
+        "CSIDriver" => "Registers a Container Storage Interface driver with the cluster.",
+        "CSINode" => "Per-node information published by CSI drivers.",
+        // Cluster
+        "Node" => "A worker machine in the cluster that runs Pods.",
+        "Namespace" => "A virtual cluster used to scope and isolate resources.",
+        "ServiceAccount" => "An identity for processes running inside Pods.",
+        "ResourceQuota" => "Caps aggregate resource usage within a namespace.",
+        "LimitRange" => "Default and limit constraints for resources in a namespace.",
+        "Event" => "A time-stamped record of something that happened to an object.",
+        "PriorityClass" => "Defines a scheduling priority that Pods can reference.",
+        "RuntimeClass" => "Selects the container runtime configuration for Pods.",
+        "PodDisruptionBudget" => "Limits how many Pods can be voluntarily disrupted at once.",
+        "HorizontalPodAutoscaler" => "Scales a workload's replicas based on observed metrics.",
+        // RBAC
+        "Role" => "A namespaced set of RBAC permissions.",
+        "ClusterRole" => "A cluster-wide set of RBAC permissions.",
+        "RoleBinding" => "Grants a Role to users, groups, or ServiceAccounts in a namespace.",
+        "ClusterRoleBinding" => "Grants a ClusterRole cluster-wide.",
+        // Admission / API extension
+        "CustomResourceDefinition" => "Defines a new custom resource type served by the API.",
+        "APIService" => "Registers an API group/version (often an aggregated API) with the API server.",
+        "MutatingWebhookConfiguration" => "Admission webhooks that can modify API requests before they're stored.",
+        "ValidatingWebhookConfiguration" => "Admission webhooks that accept or reject API requests.",
+        "FlowSchema" => "Classifies API requests for priority and fairness.",
+        "PriorityLevelConfiguration" => "Defines a concurrency limit for API request fairness.",
+        "ComponentStatus" => "Health of cluster control-plane components (deprecated).",
+        _ => return None,
+    })
+}
+
 /// Kind-specific column headers (besides Name / Namespace / Status / Age).
 pub fn columns_for(kind: &str) -> &'static [&'static str] {
     match kind {
@@ -1102,6 +1213,33 @@ mod tests {
         let incoming = OverviewData { pods_total: 120, pods_running: 118, pods_loaded: true, ..Default::default() };
         let merged = prev.merge_from(&incoming);
         assert_eq!((merged.pods_total, merged.pods_running), (120, 118));
+    }
+
+    #[test]
+    fn cr_icon_key_maps_groups() {
+        assert_eq!(cr_icon_key("monitoring.coreos.com"), Some("prometheus"));
+        assert_eq!(cr_icon_key("kafka.strimzi.io"), Some("strimzi"));
+        assert_eq!(cr_icon_key("elasticsearch.k8s.elastic.co"), Some("elastic"));
+        assert_eq!(cr_icon_key("cert-manager.io"), Some("cert-manager"));
+        assert_eq!(cr_icon_key("acme.cert-manager.io"), Some("cert-manager"));
+        assert_eq!(cr_icon_key("gateway.networking.k8s.io"), Some("gateway-api"));
+        assert_eq!(cr_icon_key("karpenter.k8s.aws"), Some("karpenter")); // karpenter wins over aws
+        assert_eq!(cr_icon_key("elbv2.k8s.aws"), Some("aws"));
+        assert_eq!(cr_icon_key("totally.unknown.example.com"), None);
+    }
+
+    #[test]
+    fn cr_tint_is_stable_and_bounded() {
+        assert_eq!(cr_tint("foo.bar"), cr_tint("foo.bar"));
+        assert!(cr_tint("anything.io") < 6);
+    }
+
+    #[test]
+    fn kind_description_known_and_unknown() {
+        assert!(kind_description("Node").unwrap().contains("worker machine"));
+        assert!(kind_description("Deployment").is_some());
+        assert!(kind_description("ClusterRole").is_some());
+        assert_eq!(kind_description("SomeRandomCRD"), None);
     }
 
     #[test]

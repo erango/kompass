@@ -27,6 +27,10 @@
 }
 .nav-subitem:first-child::before { top: 2px; }
 .nav-subitem:last-child::before { bottom: 4px; }
+/* Custom-resource project icon (full-color logo or tinted fallback glyph). */
+.nav-subitem .cr-ico { width: 15px; height: 15px; flex: none; object-fit: contain; }
+.nav-subitem .cr-glyph { display: inline-flex; align-items: center; justify-content: center; }
+.nav-subitem .cr-glyph svg { width: 15px; height: 15px; }
 .nav-subitem:hover { background: var(--bg-raised); color: var(--fg-default); }
 .nav-subitem.active { background: var(--accent-tint); color: var(--fg-strong); font-weight: var(--fw-medium); }
 /* active child lights its segment of the rail in the accent (same left:16px) */

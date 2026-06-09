@@ -791,6 +791,12 @@ async fn discover(client: &Client) -> Registry {
                 if ar.group == "events.k8s.io" && ar.kind == "Event" {
                     continue;
                 }
+                // metrics.k8s.io NodeMetrics/PodMetrics share the plurals
+                // "nodes"/"pods", so they show up as duplicate Nodes/Pods items.
+                // They're raw metrics (consumed by the poller), not browsable.
+                if ar.group == "metrics.k8s.io" {
+                    continue;
+                }
                 let namespaced = caps.scope == Scope::Namespaced;
                 let id = KindMeta {
                     group: ar.group.clone(),

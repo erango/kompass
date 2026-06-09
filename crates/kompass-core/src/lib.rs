@@ -8,7 +8,7 @@ pub mod watch;
 
 pub use model::{
     age_of, category_for, cluster_accent_index, columns_for, container_states_from_yaml, has_logs,
-    has_metrics, is_data_kind, ContainerState,
+    cr_icon_key, cr_tint, has_metrics, is_data_kind, kind_description, ContainerState,
     is_workload, list_contexts, Cmd, ConnState, Delta, EventRow, KindMeta, MetricSample, NodeUsage,
     OverviewData, PortForward, ResourceRow,
 };
