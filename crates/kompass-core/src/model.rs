@@ -398,6 +398,12 @@ pub enum Cmd {
     /// Watching a single namespace is far cheaper than cluster-wide on big
     /// clusters (e.g. listing every Secret across all namespaces).
     SetNamespace(Option<String>),
+    /// Force a full reconnect: rebuild the client from kubeconfig (re-running
+    /// exec auth plugins so expired creds — e.g. after an `aws sso login` — are
+    /// picked up), then restart the active watch. The in-watch self-heal only
+    /// refreshes its own local client; this refreshes the engine's shared one,
+    /// matching what relaunching the app does.
+    Reconnect,
     /// Fetch the pods owned by a controller (Deployment/StatefulSet/…) for its
     /// detail panel.
     FetchControllerPods { kind_id: String, namespace: String, name: String },

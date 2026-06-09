@@ -41,30 +41,54 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
         let _ = tx.send(Delta::Context(n.clone()));
     }
 
-    let mut client = match Client::try_default().await {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = tx.send(Delta::Conn(ConnState::Error(e.to_string())));
-            return;
-        }
-    };
-
     // Core built-in kinds, known without discovery — register + show instantly
     // so the default view paints immediately instead of waiting on a full
     // cluster discovery (slow on clusters with many CRDs / aggregated APIs).
+    let mut registry = core_registry();
+    let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
+    let mut active = "deployments.apps".to_string();
+    // The namespace the UI is viewing (None = all). Watches scope to it when set
+    // (cheaper than cluster-wide on big clusters). A forced `scope_ns` wins.
+    let mut view_ns: Option<String> = None;
+
+    // Connect, retrying instead of giving up. If the initial client build fails
+    // (commonly: exec auth creds already expired at launch — `aws eks get-token`
+    // exits non-zero), returning here would kill the engine: the command loop
+    // never starts, so "Retry now" / auto-reconnect have nothing to talk to and
+    // only relaunching recovers. Instead stay alive and retry — on a timer and
+    // immediately on a reconnect-intent command (Retry, context switch).
+    let mut client = loop {
+        match rebuild_client(&ctx_name).await {
+            Ok(c) => break c,
+            Err(e) => {
+                let _ = tx.send(Delta::Conn(ConnState::Error(e.to_string())));
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+                    cmd = cmd_rx.recv() => match cmd {
+                        None => return, // UI gone
+                        Some(Cmd::SetContext(name)) => {
+                            ctx_name = Some(name.clone());
+                            let _ = tx.send(Delta::Context(name));
+                        }
+                        Some(Cmd::SetKind(id)) => active = id,
+                        Some(Cmd::SetNamespace(ns)) => view_ns = ns,
+                        _ => {} // Reconnect / anything else: just retry now
+                    },
+                }
+                // Stay in Error (banner over last-known data) while retrying —
+                // re-emitting Connecting here flips the table to a loader every
+                // attempt, which looks jumpy on a try/fail/try loop.
+            }
+        }
+    };
+
     // Namespace scope: None = cluster-wide; Some(ns) = the connection can only
     // list that one namespace (detected on connect, recomputed on context switch).
     let mut scope_ns = detect_scope(&client, &ctx_name).await;
     if let Some(ns) = &scope_ns {
         let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
     }
-    // The namespace the UI is viewing (None = all). Watches scope to it when set
-    // (cheaper than cluster-wide on big clusters). A forced `scope_ns` wins.
-    let mut view_ns: Option<String> = None;
 
-    let mut registry = core_registry();
-    let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
-    let mut active = "deployments.apps".to_string();
     let mut watch_task =
         start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
     let mut log_task: Option<JoinHandle<()>> = None;
@@ -105,6 +129,28 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                     let _ = tx.send(Delta::Conn(ConnState::Connecting));
                     watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
                 }
+            }
+            Cmd::Reconnect => {
+                if let Some(h) = watch_task.take() {
+                    h.abort();
+                }
+                // Keep last-known rows visible (no Reset) while we rebuild the
+                // shared client so re-run exec auth picks up fresh creds (the
+                // in-watch self-heal only refreshes its local copy).
+                let _ = tx.send(Delta::Conn(ConnState::Connecting));
+                match rebuild_client(&ctx_name).await {
+                    Ok(c) => {
+                        client = c;
+                        scope_ns = detect_scope(&client, &ctx_name).await;
+                        if let Some(ns) = &scope_ns {
+                            let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Delta::Conn(ConnState::Error(e.to_string())));
+                    }
+                }
+                watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
             }
             Cmd::SetContext(name) => {
                 if let Some(h) = watch_task.take() {

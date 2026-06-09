@@ -2982,10 +2982,7 @@ fn App() -> Element {
                                 div { class: "ml-auto",
                                     button {
                                         class: "btn",
-                                        onclick: {
-                                            let id = active_id.clone();
-                                            move |_| send_cmd(Cmd::SetKind(id.clone()))
-                                        },
+                                        onclick: move |_| send_cmd(Cmd::Reconnect),
                                         {icon("i-refresh", "1.8")}
                                         "Retry now"
                                     }
