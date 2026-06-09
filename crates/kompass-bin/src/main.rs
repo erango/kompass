@@ -1303,6 +1303,12 @@ fn App() -> Element {
     // Cluster namespace list for the filter dropdown — kept independent of the
     // active kind so cluster-scoped views (Nodes, PVs) don't empty the picker.
     let mut all_namespaces = use_signal(BTreeSet::<String>::new);
+    // Per-cluster namespace cache so a switch shows the target's namespaces
+    // immediately (never the previous cluster's), even if it's empty.
+    let mut ns_by_ctx = use_signal(std::collections::HashMap::<String, BTreeSet<String>>::new);
+    // Gentle loading state while the new cluster's namespaces / CRD catalog load.
+    let mut ns_loading = use_signal(|| true);
+    let mut crds_loading = use_signal(|| true);
     // Live usage: "namespace/name" → (cpu_milli, mem_bytes).
     let mut metrics = use_signal(std::collections::HashMap::<String, (i64, i64)>::new);
     // Usage history per key for sparklines: (cpu_series, mem_series).
@@ -1379,6 +1385,20 @@ fn App() -> Element {
         use_signal(std::collections::HashMap::<(String, String), Vec<ResourceRow>>::new);
     let mut resyncing = use_signal(|| false);
     let mut seen = use_signal(std::collections::HashSet::<String>::new);
+    // "namespace/name" → index into `rows`, for O(1) upserts during a watch
+    // sync. Without it the initial list of a large kind (e.g. 7k+ Pods) is
+    // O(n²) — each Applied linearly scans the growing Vec.
+    let mut row_idx = use_signal(std::collections::HashMap::<String, usize>::new);
+    // Rebuild the index from the current rows (after a wholesale rows replace).
+    let reindex = use_callback(move |_: ()| {
+        let map: std::collections::HashMap<String, usize> = rows
+            .read()
+            .iter()
+            .enumerate()
+            .map(|(i, r)| (format!("{}/{}", r.namespace, r.name), i))
+            .collect();
+        row_idx.set(map);
+    });
     let mut sort = use_signal(|| (SortKey::from_id(&prefs.sort_key), prefs.sort_asc));
 
     // Boot navigation: engine starts on deployments.apps; steer to the default page.
@@ -1645,7 +1665,15 @@ fn App() -> Element {
         let cur = context();
         // Remember this cluster's namespace views; restore the target's (or default).
         nsv_by_ctx.write().insert(cur.clone(), (ns_views(), ns_active()));
-        kind_cache.write().insert((cur, kind()), rows());
+        kind_cache.write().insert((cur.clone(), kind()), rows());
+        // Namespaces are per-cluster: stash the current set, then swap to the
+        // target's cached set (empty if never visited) so the dropdown never
+        // shows the previous cluster's namespaces. Refreshed by Delta::Namespaces.
+        ns_by_ctx.write().insert(cur, all_namespaces());
+        let target_ns = ns_by_ctx.read().get(&name).cloned().unwrap_or_default();
+        all_namespaces.set(target_ns);
+        ns_loading.set(true);
+        crds_loading.set(true);
         let cached = kind_cache.read().get(&(name.clone(), kind())).cloned().unwrap_or_default();
         let (tv, ta) = nsv_by_ctx
             .read()
@@ -1661,6 +1689,8 @@ fn App() -> Element {
         detail_full.set(false);
         selected.write().clear();
         rows.set(cached);
+        reindex.call(());
+        conn.set(ConnState::Connecting); // loading state now, not a stale-Live empty flash
         // History is per-cluster: the namespace-view indices belong to this
         // context, so reset it (the record effect reseeds for the new context).
         hist.write().clear();
@@ -1761,7 +1791,13 @@ fn App() -> Element {
                 Delta::PortForwards(v) => port_forwards.set(v),
                 Delta::Events(v) => events.set(v),
                 Delta::ControllerPods(v) => ctrl_pods.set(v),
-                Delta::Namespaces(v) => all_namespaces.set(v.into_iter().collect()),
+                Delta::Namespaces(v) => {
+                    let set: BTreeSet<String> = v.into_iter().collect();
+                    ns_by_ctx.write().insert(context(), set.clone());
+                    all_namespaces.set(set);
+                    ns_loading.set(false);
+                }
+                Delta::DiscoveryComplete => crds_loading.set(false),
                 Delta::ScopedNamespace(ns) => {
                     // No cluster-wide access — lock the view to the one namespace
                     // the connection can list (from the kubeconfig context).
@@ -1802,6 +1838,7 @@ fn App() -> Element {
                         rows.write()
                             .retain(|r| keep.contains(&format!("{}/{}", r.namespace, r.name)));
                         resyncing.set(false);
+                        reindex.call(()); // indices shifted by retain
                     }
                 }
                 // Don't clear: keep showing cached rows, reconcile on Live.
@@ -1815,12 +1852,15 @@ fn App() -> Element {
                         let key = format!("{}/{}", row.namespace, row.name);
                         {
                             let mut list = rows.write();
-                            match list
-                                .iter_mut()
-                                .find(|r| r.namespace == row.namespace && r.name == row.name)
-                            {
-                                Some(existing) => *existing = row,
-                                None => list.push(row),
+                            // O(1) upsert via the index (the guard tolerates a
+                            // stale index, e.g. right after a cached-rows swap).
+                            let at = row_idx.peek().get(&key).copied();
+                            match at {
+                                Some(i) if i < list.len() => list[i] = row,
+                                _ => {
+                                    row_idx.write().insert(key.clone(), list.len());
+                                    list.push(row);
+                                }
                             }
                         }
                         if resyncing() {
@@ -1832,6 +1872,7 @@ fn App() -> Element {
                     if k == kind() {
                         rows.write()
                             .retain(|r| !(r.namespace == namespace && r.name == name));
+                        reindex.call(()); // indices shifted by retain
                     }
                 }
                 Delta::Manifest { namespace, name, yaml } => {
@@ -2123,7 +2164,13 @@ fn App() -> Element {
         kind_cache.write().insert((ctx.clone(), kind()), rows());
         let cached = kind_cache.read().get(&(ctx, id.clone())).cloned().unwrap_or_default();
         rows.set(cached);
+        reindex.call(());
         kind.set(id.clone());
+        // Optimistically enter the loading state so the (re)load shows a skeleton
+        // / revalidating bar immediately — not a brief "no <kind> found" empty
+        // flash (which happens if conn stays Live while rows are empty until the
+        // engine's Connecting delta arrives, e.g. switching to the large Pods list).
+        conn.set(ConnState::Connecting);
         send_cmd(Cmd::SetKind(id));
     });
 
@@ -2131,6 +2178,18 @@ fn App() -> Element {
     let view_pods_for = use_callback(move |name: String| {
         queries.write().insert(("pods".to_string(), ns_active()), name);
         switch_kind.call("pods".to_string());
+    });
+
+    // Reset scroll whenever the visible list changes wholesale (kind, cluster, or
+    // namespace view). Otherwise the virtualization window keeps the old
+    // scrollTop and can point past the new (often shorter) list — rendering only
+    // blank padding ("gray box") until a manual scroll recomputes the window.
+    use_effect(move || {
+        let _ = (kind(), context(), ns_active(), ns_views());
+        scroll_top.set(0.0);
+        let _ = dioxus::document::eval(
+            "{ const w = document.querySelector('.table-wrap'); if (w) w.scrollTop = 0; }",
+        );
     });
 
     // Record a history entry whenever the *place* changes — page (overview vs a
@@ -2498,10 +2557,15 @@ fn App() -> Element {
                             let vlabel = v.clone().unwrap_or_else(|| "all namespaces".into());
                             let multi = nview_count > 1;
                             if is_active_tab {
+                                let ns_btn_cls = format!(
+                                    "ns-select active{}{}",
+                                    if multi { " removable" } else { "" },
+                                    if ns_loading() { " is-loading" } else { "" },
+                                );
                                 rsx! {
                                     div { class: "ns-wrap",
                                         button {
-                                            class: if multi { "ns-select active removable" } else { "ns-select active" },
+                                            class: "{ns_btn_cls}",
                                             onclick: move |_| { ns_query.set(String::new()); ns_hl.set(0); ns_open.toggle(); },
                                             span { class: "val", "{vlabel}" }
                                             span { class: "chev", {icon("i-chev-down", "2")} }
@@ -2777,7 +2841,13 @@ fn App() -> Element {
                         let is_active_cat = !overview_on() && *label == active_cat_name && active_meta.is_some();
                         let is_open = is_active_cat || expanded().contains(*label);
                         let group_class = if is_open { "nav-group open" } else { "nav-group" };
-                        let parent_class = if has { "nav-item nav-parent" } else { "nav-item nav-parent disabled" };
+                        // Shimmer the Custom Resources category while discovery runs.
+                        let cat_loading = crds_loading() && *label == "Custom Resources";
+                        let parent_class = format!(
+                            "nav-item nav-parent{}{}",
+                            if has { "" } else { " disabled" },
+                            if cat_loading { " is-loading" } else { "" },
+                        );
                         rsx! {
                             div { class: "{group_class}",
                                 div {

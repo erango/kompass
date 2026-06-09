@@ -108,6 +108,7 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
         registry.entry(id).or_insert(entry);
     }
     let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
+    let _ = tx.send(Delta::DiscoveryComplete);
 
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
@@ -191,6 +192,7 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                             registry.entry(id).or_insert(entry);
                         }
                         let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
+                        let _ = tx.send(Delta::DiscoveryComplete);
                         if metrics_on {
                             metrics_task = Some(tokio::spawn(poll_metrics(client.clone(), tx.clone())));
                         }

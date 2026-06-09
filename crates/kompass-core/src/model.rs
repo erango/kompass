@@ -294,6 +294,9 @@ pub enum Delta {
     /// independent of the active kind — cluster-scoped views (Nodes, PVs) carry
     /// no namespace and would otherwise leave the picker empty.
     Namespaces(Vec<String>),
+    /// Full discovery (CRDs + everything) finished — the catalog is now complete.
+    /// Lets the UI stop the "discovering" shimmer on the Custom Resources nav.
+    DiscoveryComplete,
 
     // ---- Exec / terminal ----
     /// A new exec session started — clear the terminal.

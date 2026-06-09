@@ -351,6 +351,14 @@ td.col-actions { width: 128px; }
 .skel { display: inline-block; height: 11px; border-radius: var(--radius-sm); background: var(--bg-raised); position: relative; overflow: hidden; }
 .skel::after { content:''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--border-subtle), transparent); animation: shimmer 1.5s infinite; }
 @keyframes shimmer { from { transform: translateX(-100%);} to { transform: translateX(100%);} }
+/* Gentle inline shimmer: the element stays visible, a soft band sweeps across.
+   Used on the namespace button + Custom Resources nav while their data loads. */
+.is-loading { position: relative; overflow: hidden; }
+.is-loading::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--fg-default) 10%, transparent), transparent);
+  transform: translateX(-100%); animation: shimmer 1.4s ease-in-out infinite;
+}
 
 /* ---------- Empty / error states ---------- */
 .state-pane { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-6); padding: var(--sp-12); text-align: center; }
