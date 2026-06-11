@@ -900,6 +900,10 @@ async fn watch_kind(
     // expired exec credentials — e.g. `aws eks get-token` — are refreshed) and
     // restart the watch with capped backoff. Stale data stays visible meanwhile.
     let mut backoff = 1u64;
+    // True once we've rebuilt the client after a failure — so when the watch
+    // comes back healthy we also re-fetch the namespace list (it may have gone
+    // stale / never loaded while creds were expired).
+    let mut reconnected = false;
     loop {
         // When the connection is namespace-scoped, watch only that namespace
         // (cluster-wide would 403). Cluster-scoped kinds (Node, …) stay all-wide.
@@ -927,6 +931,11 @@ async fn watch_kind(
                 Ok(Event::InitDone) => {
                     backoff = 1; // healthy again
                     let _ = tx.send(Delta::Conn(ConnState::Live));
+                    if reconnected {
+                        // Recovered from a drop — refresh namespaces too.
+                        refresh_namespaces(&client, &tx, &scope);
+                        reconnected = false;
+                    }
                 }
                 Ok(Event::Delete(o)) => {
                     let _ = tx.send(Delta::Deleted {
@@ -947,7 +956,10 @@ async fn watch_kind(
         backoff = (backoff * 2).min(15);
         // Rebuild the client so credentials are re-fetched on reconnect.
         match rebuild_client(&ctx).await {
-            Ok(c) => client = c,
+            Ok(c) => {
+                client = c;
+                reconnected = true;
+            }
             Err(e) => {
                 let _ = tx.send(Delta::Conn(ConnState::Error(format!("reconnect failed: {e}"))));
             }
