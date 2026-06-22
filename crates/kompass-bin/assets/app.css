@@ -319,11 +319,19 @@ td.col-check, th.col-check { width: 20px; padding-right: 0; }
 .spark.mem { color: var(--cluster-2); }
 
 /* row hover actions */
-.row-actions { display: flex; align-items: center; gap: 2px; opacity: 0; justify-content: flex-end; transition: opacity var(--dur-fast); }
+/* Row actions overlay on hover — no reserved column (the cell is 0-width and
+   the actions float over the row's right edge, fading in over the hover bg). */
+.table td.col-actions { width: 0; padding: 0; position: relative; overflow: visible; }
+.row-actions {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  display: flex; align-items: center; gap: 2px; opacity: 0; justify-content: flex-end;
+  padding: 0 var(--sp-8) 0 var(--sp-8);
+  background: linear-gradient(90deg, transparent, var(--bg-surface) var(--sp-7));
+  transition: opacity var(--dur-fast);
+}
 .table tbody tr:hover .row-actions { opacity: 1; }
 .row-actions .icon-btn { width: 26px; height: 26px; }
 .row-actions .icon-btn svg { width: 15px; height: 15px; }
-td.col-actions { width: 128px; }
 
 /* Live-update settle: a calm accent tick on the row's left edge that fades out.
    Uses box-shadow (not background) so it never washes the row separators or the

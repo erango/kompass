@@ -1578,6 +1578,16 @@ fn App() -> Element {
     // Container-square tooltips open downward, but in the scrollable table they'd
     // be clipped by the scroll container near its bottom edge. On hover, flip the
     // tooltip toward the interior (up when there isn't room below).
+    // Suppress the webview's native right-click menu ("Reload", "Inspect
+    // Element") so the app doesn't feel like a browser. The app's own
+    // right-click menus are Dioxus-rendered (separate from the native one), so
+    // they keep working — this only kills the default.
+    use_hook(|| {
+        dioxus::document::eval(
+            "document.addEventListener('contextmenu', function(e){ e.preventDefault(); });",
+        );
+    });
+
     use_hook(|| {
         dioxus::document::eval(
             r#"document.addEventListener('mouseover', function(e){
@@ -3169,7 +3179,7 @@ fn App() -> Element {
                                                 "Age" span { class: "sort-ind", "{sort_ind(SortKey::Age)}" }
                                             }
                                         }
-                                        th { class: "col-actions", style: "width:128px" }
+                                        th { class: "col-actions", style: "width:0" }
                                     }
                                 }
                                 tbody {
@@ -4301,6 +4311,10 @@ fn EventsTab(events: Vec<EventRow>) -> Element {
                                 span { class: "ev-age", "{e.age}" }
                             }
                             div { class: "ev-msg", "{e.message}" }
+                        }
+                        CopyButton {
+                            text: format!("{} — {}", e.reason, e.message),
+                            class: "ev-copy".to_string(),
                         }
                     }
                 }
