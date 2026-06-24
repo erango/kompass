@@ -148,6 +148,15 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                             let _ = tx.send(Delta::ScopedNamespace(ns.clone()));
                         }
                         refresh_namespaces(&client, &tx, &scope_ns);
+                        // Re-run discovery: if the initial discover ran while creds
+                        // were expired/mid-refresh it could have returned partial
+                        // (CRDs / "Other" missing), and nothing else re-discovers.
+                        let full = discover(&client).await;
+                        for (id, entry) in full {
+                            registry.entry(id).or_insert(entry);
+                        }
+                        let _ = tx.send(Delta::Catalog(catalog_from(&registry)));
+                        let _ = tx.send(Delta::DiscoveryComplete);
                     }
                     Err(e) => {
                         let _ = tx.send(Delta::Conn(ConnState::Error(e.to_string())));
