@@ -2600,7 +2600,7 @@ dependencies = [
 
 [[package]]
 name = "kompass-bin"
-version = "1.0.14"
+version = "1.0.15"
 dependencies = [
  "base64",
  "dioxus",
@@ -2620,7 +2620,7 @@ dependencies = [
 
 [[package]]
 name = "kompass-core"
-version = "1.0.14"
+version = "1.0.15"
 dependencies = [
  "futures",
  "k8s-openapi",
