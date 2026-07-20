@@ -231,7 +231,7 @@
   position: absolute; left: 50%; bottom: var(--sp-6); transform: translateX(-50%);
   display: inline-flex; align-items: center; gap: var(--sp-3);
   height: 28px; padding: 0 var(--sp-4) 0 var(--sp-5); border: none;
-  border-radius: 999px; background: var(--accent); color: var(--accent-fg);
+  border-radius: 999px; background: var(--accent-strong); color: var(--fg-on-accent);
   font-size: var(--text-small); font-weight: var(--fw-medium); cursor: pointer;
   box-shadow: var(--shadow-md); animation: latest-in 160ms var(--ease-out);
 }
