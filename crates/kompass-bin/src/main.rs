@@ -1250,6 +1250,20 @@ fn SearchBox(
                     }
                 },
             }
+            if !raw().is_empty() {
+                button {
+                    class: "input-clear",
+                    "aria-label": "Clear",
+                    onclick: move |e| {
+                        e.prevent_default();
+                        raw.set(String::new());
+                        let g = *generation.peek() + 1; // cancel pending debounce
+                        generation.set(g);
+                        on_change.call(String::new());
+                    },
+                    {icon("i-x", "2.2")}
+                }
+            }
         }
     }
 }
@@ -3392,6 +3406,14 @@ fn App() -> Element {
                                 }
                             },
                         }
+                        if !palette_query().is_empty() {
+                            button {
+                                class: "input-clear",
+                                "aria-label": "Clear",
+                                onclick: move |_| { palette_query.set(String::new()); palette_sel.set(0); },
+                                {icon("i-x", "2.2")}
+                            }
+                        }
                         span { class: "ctx-pill",
                             span { class: "d" }
                             "{ctx}"
@@ -5084,19 +5106,33 @@ fn LogsTab(
     // None = all containers (default).
     let mut selected = use_signal(|| None::<String>);
     let mut ctr_open = use_signal(|| false);
+    // Whether the log view is scrolled to (near) the bottom. Drives auto-scroll
+    // and the "Latest" pill. Set from the view's onscroll.
+    let mut log_at_bottom = use_signal(|| true);
 
     let current = selected();
     let current_label = current.clone().unwrap_or_else(|| "All containers".into());
 
-    // Auto-scroll to the bottom on new lines while Follow is on.
+    // Auto-scroll to the bottom on new lines while Follow is on — but only when the
+    // user is pinned to the bottom. Scrolling up pauses it (and shows the "Latest"
+    // pill); returning to the bottom resumes it. New lines never yank the view away
+    // from where the user is reading.
     use_effect(move || {
         let _ = logs.read().len(); // subscribe to new lines
-        if follow() {
+        if follow() && log_at_bottom() {
             dioxus::document::eval(
                 "requestAnimationFrame(()=>{const e=document.querySelector('.logview'); if(e) e.scrollTop=e.scrollHeight;});",
             );
         }
     });
+
+    // Jump to the newest line (the "Latest" pill).
+    let jump_to_latest = move |_| {
+        log_at_bottom.set(true);
+        dioxus::document::eval(
+            "requestAnimationFrame(()=>{const e=document.querySelector('.logview'); if(e) e.scrollTop=e.scrollHeight;});",
+        );
+    };
 
     let lines = logs();
     let total = lines.len();
@@ -5215,7 +5251,7 @@ fn LogsTab(
                 button {
                     class: if wrap() { "toggle on" } else { "toggle" },
                     onclick: move |_| wrap.toggle(),
-                    {icon("i-wrap", "1.8")}
+                    span { class: "sw" }
                     "Wrap"
                 }
             }
@@ -5229,7 +5265,14 @@ fn LogsTab(
                     }
                 }
             }
-            div { class: "{logview_class}",
+            div { class: "logview-wrap",
+            div {
+                class: "{logview_class}",
+                onscroll: move |e| {
+                    let d = e.data();
+                    let gap = d.scroll_height() as f64 - d.scroll_top() - d.client_height() as f64;
+                    log_at_bottom.set(gap < 24.0);
+                },
                 if total == 0 {
                     div { class: "detail-loading", "Waiting for log output…" }
                 } else if shown_count == 0 {
@@ -5263,6 +5306,13 @@ fn LogsTab(
                                 }
                             }
                         }
+                    }
+                }
+            }
+                if !log_at_bottom() {
+                    button { class: "log-latest", onclick: jump_to_latest,
+                        "Latest"
+                        {icon("i-chev-down", "2.4")}
                     }
                 }
             }

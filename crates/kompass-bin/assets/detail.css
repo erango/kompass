@@ -206,14 +206,38 @@
 }
 .toggle:hover { color: var(--fg-default); border-color: var(--border-default); }
 .toggle.on { background: var(--accent-tint); border-color: transparent; color: var(--accent-fg); }
-.toggle .sw { width: 7px; height: 7px; border-radius: 50%; background: var(--status-running); }
+/* Follow uses a sliding switch (a track + knob) so its on/off state reads clearly. */
+.toggle .sw {
+  position: relative; width: 24px; height: 14px; border-radius: 999px; flex: none;
+  background: var(--border-strong); transition: background var(--dur-fast);
+}
+.toggle .sw::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px;
+  border-radius: 50%; background: #fff; transition: transform var(--dur-fast);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+.toggle.on .sw { background: var(--accent); }
+.toggle.on .sw::after { transform: translateX(10px); }
 .pod-legend { display: flex; align-items: center; gap: var(--sp-5); padding: var(--sp-4) var(--sp-7); border-bottom: 1px solid var(--border-subtle); flex: none; }
 .pod-legend .pl { display: inline-flex; align-items: center; gap: var(--sp-3); font-size: var(--text-micro); color: var(--fg-muted); font-family: var(--font-mono); }
 .pod-legend .pl .b { width: 8px; height: 8px; border-radius: 2px; }
+.logview-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .logview {
   flex: 1; min-height: 0; overflow: auto; background: var(--bg-inset);
   font-family: var(--font-mono); font-size: var(--text-small); line-height: 1.65; padding: var(--sp-4) 0;
 }
+/* "Latest" pill — shown when scrolled up; jumps to the newest line. */
+.log-latest {
+  position: absolute; left: 50%; bottom: var(--sp-6); transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: var(--sp-3);
+  height: 28px; padding: 0 var(--sp-4) 0 var(--sp-5); border: none;
+  border-radius: 999px; background: var(--accent); color: var(--accent-fg);
+  font-size: var(--text-small); font-weight: var(--fw-medium); cursor: pointer;
+  box-shadow: var(--shadow-md); animation: latest-in 160ms var(--ease-out);
+}
+.log-latest:hover { filter: brightness(1.08); }
+.log-latest svg { width: 15px; height: 15px; }
+@keyframes latest-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .logline { display: grid; grid-template-columns: 96px 14px 1fr; gap: var(--sp-4); padding: 1px var(--sp-7); white-space: pre-wrap; word-break: break-word; }
 .logview.nowrap .logline { white-space: pre; }
 .logline:hover { background: color-mix(in oklch, var(--fg-default) 5%, transparent); }

@@ -197,6 +197,15 @@
 .search svg { width: 15px; height: 15px; color: var(--fg-faint); flex: none; }
 .search input { all: unset; flex: 1; font-size: var(--text-small); color: var(--fg-default); min-width: 0; }
 .search input::placeholder { color: var(--fg-faint); }
+/* Clear (×) button inside search/filter inputs and the ⌘K palette. */
+.input-clear {
+  all: unset; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: var(--radius-sm);
+  color: var(--fg-faint); cursor: pointer; flex: none;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.input-clear:hover { color: var(--fg-strong); background: var(--bg-raised); }
+.search .input-clear svg, .pal-input .input-clear svg { width: 13px; height: 13px; color: inherit; }
 
 .filter-chip {
   display: inline-flex; align-items: center; gap: var(--sp-3);
