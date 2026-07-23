@@ -896,6 +896,7 @@ struct DetailTarget {
     status_class: String,
     cols: Vec<String>,
     age: String,
+    created: String,
 }
 
 /// A single streamed log line (with its source pod + color index).
@@ -2426,6 +2427,7 @@ fn App() -> Element {
                         status_class: r.status_class.clone(),
                         cols: r.cols.clone(),
                         age: r.age.clone(),
+                        created: r.created.clone(),
                     }),
                 });
             }
@@ -3746,6 +3748,7 @@ fn ResRow(
         status_class: row.status_class.clone(),
         cols: row.cols.clone(),
         age: row.age.clone(),
+        created: row.created.clone(),
     };
 
     let badge = format!("badge {}", row.status_class);
@@ -3839,7 +3842,11 @@ fn ResRow(
                 }
             }
             if vis.age {
-                td { class: "cell-age", "{row.age}" }
+                if row.created.is_empty() {
+                    td { class: "cell-age", "{row.age}" }
+                } else {
+                    td { class: "cell-age tip", "data-tip": "{row.created}", "{row.age}" }
+                }
             }
             td { class: "col-actions",
                 div { class: "row-actions",
@@ -4132,7 +4139,11 @@ fn DetailPanel(
                         span { class: "ready", "{first}" }
                     }
                     span { class: "cell-ns", "{target.namespace}" }
-                    span { class: "cell-age", "{target.age}" }
+                    if target.created.is_empty() {
+                        span { class: "cell-age", "{target.age}" }
+                    } else {
+                        span { class: "cell-age tip", "data-tip": "{target.created}", "{target.age}" }
+                    }
                 }
             }
 
@@ -4402,7 +4413,11 @@ fn SummaryTab(
                         dd { class: "mono", "{val}" }
                     }
                     dt { "Age" }
-                    dd { "{target.age}" }
+                    if target.created.is_empty() {
+                        dd { "{target.age}" }
+                    } else {
+                        dd { class: "tip tip-below", "data-tip": "{target.created}", "{target.age}" }
+                    }
                     if let Some(s) = &summary {
                         if let Some(node) = &s.node {
                             dt { "Node" }
@@ -4541,6 +4556,7 @@ fn SummaryTab(
                                         status_class: p.status_class.clone(),
                                         cols: p.cols.clone(),
                                         age: p.age.clone(),
+                                        created: p.created.clone(),
                                     };
                                     rsx! {
                                         div {
@@ -4553,7 +4569,11 @@ fn SummaryTab(
                                             span { class: "sp-dot {p.status_class}" }
                                             span { class: "sp-name", "{p.name}" }
                                             span { class: "sp-meta", "{ready}" }
-                                            span { class: "sp-age", "{p.age}" }
+                                            if p.created.is_empty() {
+                                                span { class: "sp-age", "{p.age}" }
+                                            } else {
+                                                span { class: "sp-age tip tip-below", "data-tip": "{p.created}", "{p.age}" }
+                                            }
                                         }
                                     }
                                 }

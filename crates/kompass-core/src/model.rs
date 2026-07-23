@@ -228,6 +228,9 @@ pub struct ResourceRow {
     pub status_class: String,
     pub cols: Vec<String>,
     pub age: String,
+    /// Full creation timestamp (RFC3339), for the age cell's hover tooltip.
+    /// Empty when unknown. Set by `normalize` (mappers leave it blank).
+    pub created: String,
     /// Per-container states (Pods only; empty otherwise).
     pub containers: Vec<ContainerState>,
 }
@@ -559,10 +562,11 @@ pub fn normalize(
     namespace: String,
     name: String,
     creation_ts: Option<&k8s_openapi::apimachinery::pkg::apis::meta::v1::Time>,
+    deleting: bool,
     data: &Value,
 ) -> ResourceRow {
     let age = age_str(creation_ts);
-    match kind {
+    let mut row = match kind {
         "Pod" => map_pod(namespace, name, age, data),
         "Deployment" | "StatefulSet" | "ReplicaSet" => map_deployment(namespace, name, age, data),
         "DaemonSet" => map_daemonset(namespace, name, age, data),
@@ -575,7 +579,17 @@ pub fn normalize(
         "PersistentVolumeClaim" => map_pvc(namespace, name, age, data),
         "PersistentVolume" => map_pv(namespace, name, age, data),
         _ => map_generic(kind, namespace, name, age, data),
+    };
+    // Full creation timestamp for the age cell's hover tooltip.
+    row.created = creation_ts.map(|t| t.0.to_string()).unwrap_or_default();
+    // A resource with a deletionTimestamp is Terminating even though its phase
+    // stays (e.g. a Pod reads Running) until it's actually gone — matches
+    // `kubectl get`. deletionTimestamp lives in typed metadata, not `data`.
+    if deleting {
+        row.status = "Terminating".into();
+        row.status_class = "terminating".into();
     }
+    row
 }
 
 fn parse_ts(s: &str) -> Option<Timestamp> {
@@ -619,6 +633,7 @@ fn map_job(namespace: String, name: String, age: String, data: &Value) -> Resour
         status_class: class.into(),
         cols: vec![format!("{succeeded}/{desired}"), duration],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -639,6 +654,7 @@ fn map_cronjob(namespace: String, name: String, age: String, data: &Value) -> Re
         status_class: class.into(),
         cols: vec![schedule, active.to_string()],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -671,6 +687,7 @@ fn map_ingress(namespace: String, name: String, age: String, data: &Value) -> Re
         status_class: sclass.into(),
         cols: vec![class, hosts],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -692,6 +709,7 @@ fn map_pvc(namespace: String, name: String, age: String, data: &Value) -> Resour
         status: phase.clone(),
         cols: vec![phase, pvc_capacity(data)],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -706,6 +724,7 @@ fn map_pv(namespace: String, name: String, age: String, data: &Value) -> Resourc
         status: phase.clone(),
         cols: vec![capacity, phase],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -729,6 +748,7 @@ fn map_pod(namespace: String, name: String, age: String, data: &Value) -> Resour
         status: phase,
         cols: vec![ready, restarts.to_string()],
         age,
+        created: String::new(),
         containers,
     }
 }
@@ -783,6 +803,7 @@ fn phase_class(phase: &str) -> &'static str {
     match phase {
         "Running" | "Active" | "Bound" | "Ready" | "Available" => "running",
         "Pending" | "Progressing" | "ContainerCreating" => "pending",
+        "Terminating" => "terminating",
         "Failed" | "Error" | "CrashLoopBackOff" | "Lost" => "failed",
         "Succeeded" | "Completed" | "Released" => "neutral",
         _ => "neutral",
@@ -808,6 +829,7 @@ fn map_deployment(namespace: String, name: String, age: String, data: &Value) ->
         status_class,
         cols: vec![format!("{ready}/{desired}"), updated.to_string(), available.to_string()],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -828,6 +850,7 @@ fn map_daemonset(namespace: String, name: String, age: String, data: &Value) -> 
         status_class: class.into(),
         cols: vec![desired.to_string(), ready.to_string(), available.to_string()],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -852,6 +875,7 @@ fn map_service(namespace: String, name: String, age: String, data: &Value) -> Re
         status_class: "info".into(),
         cols: vec![svc_type, cluster_ip, ports],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -871,6 +895,7 @@ fn map_data_kind(kind: &str, namespace: String, name: String, age: String, data:
         status_class: class.into(),
         cols: vec![(d + bd).to_string()],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -903,6 +928,7 @@ fn map_node(namespace: String, name: String, age: String, data: &Value) -> Resou
         status_class: if ready { "running".into() } else { "failed".into() },
         cols: vec![roles, version],
         age,
+        created: String::new(),
         containers: Vec::new(),
     }
 }
@@ -931,7 +957,7 @@ fn map_generic(kind: &str, namespace: String, name: String, age: String, data: &
     };
     // Fill kind-specific columns if we have headers but no specialized mapper.
     let cols = columns_for(kind).iter().map(|_| "-".to_string()).collect();
-    ResourceRow { namespace, name, status, status_class, cols, age, containers: Vec::new() }
+    ResourceRow { namespace, name, status, status_class, cols, age, created: String::new(), containers: Vec::new() }
 }
 
 fn age_str(ts: Option<&k8s_openapi::apimachinery::pkg::apis::meta::v1::Time>) -> String {
@@ -1092,7 +1118,7 @@ mod tests {
                 {"name": "b", "ready": false, "restartCount": 3, "state": {"waiting": {"reason": "CrashLoopBackOff"}}},
             ],
         }});
-        let row = normalize("Pod", "ns".into(), "p".into(), None, &data);
+        let row = normalize("Pod", "ns".into(), "p".into(), None, false, &data);
         assert_eq!(row.status, "Running");
         assert_eq!(row.status_class, "running");
         assert_eq!(row.cols, vec!["1/2".to_string(), "4".to_string()]);
@@ -1101,34 +1127,43 @@ mod tests {
     }
 
     #[test]
+    fn map_pod_terminating_on_deletion_timestamp() {
+        let data = json!({"status": {"phase": "Running", "containerStatuses": []}});
+        // deleting=true (from typed metadata.deletionTimestamp) overrides phase.
+        let row = normalize("Pod", "ns".into(), "p".into(), None, true, &data);
+        assert_eq!(row.status, "Terminating");
+        assert_eq!(row.status_class, "terminating");
+    }
+
+    #[test]
     fn map_deployment_states() {
         let avail = json!({"spec": {"replicas": 3}, "status": {"readyReplicas": 3, "updatedReplicas": 3, "availableReplicas": 3}});
-        let row = normalize("Deployment", "ns".into(), "d".into(), None, &avail);
+        let row = normalize("Deployment", "ns".into(), "d".into(), None, false, &avail);
         assert_eq!((row.status.as_str(), row.status_class.as_str()), ("Available", "running"));
         assert_eq!(row.cols, vec!["3/3", "3", "3"]);
 
         let prog = json!({"spec": {"replicas": 3}, "status": {"readyReplicas": 1}});
-        assert_eq!(normalize("Deployment", "ns".into(), "d".into(), None, &prog).status, "Progressing");
+        assert_eq!(normalize("Deployment", "ns".into(), "d".into(), None, false, &prog).status, "Progressing");
 
         let zero = json!({"spec": {"replicas": 0}});
-        assert_eq!(normalize("Deployment", "ns".into(), "d".into(), None, &zero).status, "Scaled to 0");
+        assert_eq!(normalize("Deployment", "ns".into(), "d".into(), None, false, &zero).status, "Scaled to 0");
     }
 
     #[test]
     fn map_job_outcomes() {
         let done = json!({"spec": {"completions": 1}, "status": {"succeeded": 1}});
-        let row = normalize("Job", "ns".into(), "j".into(), None, &done);
+        let row = normalize("Job", "ns".into(), "j".into(), None, false, &done);
         assert_eq!((row.status.as_str(), row.status_class.as_str()), ("Complete", "running"));
         assert_eq!(row.cols[0], "1/1");
 
         let failed = json!({"spec": {"completions": 1}, "status": {"failed": 2}});
-        assert_eq!(normalize("Job", "ns".into(), "j".into(), None, &failed).status, "Failed");
+        assert_eq!(normalize("Job", "ns".into(), "j".into(), None, false, &failed).status, "Failed");
     }
 
     #[test]
     fn map_cronjob_suspended() {
         let suspended = json!({"spec": {"schedule": "*/5 * * * *", "suspend": true}});
-        let row = normalize("CronJob", "ns".into(), "c".into(), None, &suspended);
+        let row = normalize("CronJob", "ns".into(), "c".into(), None, false, &suspended);
         assert_eq!((row.status.as_str(), row.cols[0].as_str()), ("Suspended", "*/5 * * * *"));
     }
 
@@ -1141,7 +1176,7 @@ mod tests {
                 "nodeInfo": {"kubeletVersion": "v1.34.0"},
             },
         });
-        let row = normalize("Node", "".into(), "n1".into(), None, &data);
+        let row = normalize("Node", "".into(), "n1".into(), None, false, &data);
         assert_eq!((row.status.as_str(), row.status_class.as_str()), ("Ready", "running"));
         assert_eq!(row.cols, vec!["control-plane", "v1.34.0"]);
     }
@@ -1149,11 +1184,11 @@ mod tests {
     #[test]
     fn map_data_kind_counts_keys() {
         let cm = json!({"data": {"a": "1", "b": "2"}});
-        let row = normalize("ConfigMap", "ns".into(), "cm".into(), None, &cm);
+        let row = normalize("ConfigMap", "ns".into(), "cm".into(), None, false, &cm);
         assert_eq!((row.status.as_str(), row.cols[0].as_str()), ("ConfigMap", "2"));
 
         let sec = json!({"type": "kubernetes.io/tls", "data": {"tls.crt": "x"}, "binaryData": {"b": "y"}});
-        let row = normalize("Secret", "ns".into(), "s".into(), None, &sec);
+        let row = normalize("Secret", "ns".into(), "s".into(), None, false, &sec);
         assert_eq!((row.status.as_str(), row.cols[0].as_str()), ("kubernetes.io/tls", "2"));
     }
 
@@ -1161,16 +1196,16 @@ mod tests {
     fn unknown_kind_uses_generic_mapper() {
         // status.phase wins
         let phased = json!({"status": {"phase": "Bound"}});
-        let row = normalize("FooBar", "ns".into(), "f".into(), None, &phased);
+        let row = normalize("FooBar", "ns".into(), "f".into(), None, false, &phased);
         assert_eq!((row.status.as_str(), row.status_class.as_str()), ("Bound", "running"));
 
         // else a Ready/Available True condition
         let cond = json!({"status": {"conditions": [{"type": "Ready", "status": "True"}]}});
-        assert_eq!(normalize("FooBar", "ns".into(), "f".into(), None, &cond).status, "Ready");
+        assert_eq!(normalize("FooBar", "ns".into(), "f".into(), None, false, &cond).status, "Ready");
 
         // else empty + neutral
         let empty = json!({});
-        let row = normalize("FooBar", "ns".into(), "f".into(), None, &empty);
+        let row = normalize("FooBar", "ns".into(), "f".into(), None, false, &empty);
         assert_eq!((row.status.as_str(), row.status_class.as_str()), ("", "neutral"));
     }
 

@@ -270,6 +270,10 @@
 /* Name + container cells let their tooltips escape the cell (the inner content
    still clips itself). */
 .table td.col-name, .table td.col-ctr { overflow: visible; }
+/* Age cell: full creation timestamp on hover, right-anchored (near window edge). */
+.table td.cell-age.tip { overflow: visible; }
+.cell-age.tip::after { left: auto; right: 0; transform: translateX(0) translateY(4px); font-family: var(--font-mono); }
+.cell-age.tip:hover::after { transform: translateX(0) translateY(0); }
 /* Full-name tooltip: left-anchored, wraps, opens below (clears the sticky header). */
 .cell-name.tip::after {
   top: calc(100% + 6px); bottom: auto; left: 0; right: auto;
@@ -314,6 +318,9 @@ td.col-check, th.col-check { width: 20px; padding-right: 0; }
 .badge.info .dot { background: var(--status-info); }
 .badge.neutral { background: var(--status-neutral-tint); color: var(--status-neutral); }
 .badge.neutral .dot { background: var(--status-neutral); }
+/* Terminating: winding down — muted with a pulsing dot to read as transient. */
+.badge.terminating { background: var(--status-neutral-tint); color: var(--status-neutral); }
+.badge.terminating .dot { background: var(--status-neutral); animation: pulse-dot 1.2s var(--ease-in-out) infinite; }
 .badge.pending .dot { animation: pulse-dot 1.4s var(--ease-in-out) infinite; }
 
 /* ready counts / restarts */

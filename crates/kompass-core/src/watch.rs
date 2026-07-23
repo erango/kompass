@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use futures::{AsyncBufReadExt, StreamExt};
-use k8s_openapi::api::apps::v1::{Deployment, ReplicaSet};
+use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{
     ApiResource, DeleteParams, DynamicObject, ListParams, LogParams, Patch, PatchParams,
@@ -711,6 +711,7 @@ async fn fetch_controller_pods(
                     o.metadata.namespace.clone().unwrap_or_default(),
                     o.metadata.name.clone().unwrap_or_default(),
                     o.metadata.creation_timestamp.as_ref(),
+                    o.metadata.deletion_timestamp.is_some(),
                     &o.data,
                 )
             })
@@ -933,6 +934,7 @@ async fn watch_kind(
                         o.metadata.namespace.clone().unwrap_or_default(),
                         o.metadata.name.clone().unwrap_or_default(),
                         o.metadata.creation_timestamp.as_ref(),
+                        o.metadata.deletion_timestamp.is_some(),
                         &o.data,
                     );
                     let _ = tx.send(Delta::Applied { kind_id: kind_id.clone(), row });
@@ -1379,7 +1381,9 @@ async fn restart(client: Client, tx: UnboundedSender<Delta>, kind: String, names
         }}}}
     });
     match kind.as_str() {
-        "Deployment" => patch_deployment(&client, &tx, &namespace, &name, &patch, "Rollout restart").await,
+        "Deployment" => patch_workload::<Deployment>(&client, &tx, &namespace, &name, &patch, "Rollout restart").await,
+        "StatefulSet" => patch_workload::<StatefulSet>(&client, &tx, &namespace, &name, &patch, "Rollout restart").await,
+        "DaemonSet" => patch_workload::<DaemonSet>(&client, &tx, &namespace, &name, &patch, "Rollout restart").await,
         "Pod" => {
             let pod_api: Api<Pod> = Api::namespaced(client.clone(), &namespace);
             match pod_api.get(&name).await {
@@ -1405,7 +1409,24 @@ async fn patch_deployment(
     patch: &serde_json::Value,
     label: &str,
 ) {
-    let api: Api<Deployment> = Api::namespaced(client.clone(), namespace);
+    patch_workload::<Deployment>(client, tx, namespace, name, patch, label).await
+}
+
+/// Merge-patch any namespaced workload kind (Deployment/StatefulSet/DaemonSet).
+async fn patch_workload<K>(
+    client: &Client,
+    tx: &UnboundedSender<Delta>,
+    namespace: &str,
+    name: &str,
+    patch: &serde_json::Value,
+    label: &str,
+) where
+    K: kube::Resource<DynamicType = (), Scope = k8s_openapi::NamespaceResourceScope>
+        + Clone
+        + serde::de::DeserializeOwned
+        + std::fmt::Debug,
+{
+    let api: Api<K> = Api::namespaced(client.clone(), namespace);
     match api.patch(name, &PatchParams::default(), &Patch::Merge(patch)).await {
         Ok(_) => action_result(tx, true, format!("{label} of {name}")),
         Err(e) => action_result(tx, false, format!("{label} failed: {e}")),
@@ -1456,3 +1477,4 @@ async fn apply_yaml(
         Err(e) => action_result(&tx, false, format!("Apply failed: {e}")),
     }
 }
+
