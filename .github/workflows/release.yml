@@ -40,6 +40,9 @@ jobs:
           DMG="Kompass-${VER}.dmg"
           hdiutil create -volname "Kompass" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+          # Sidecar the digest as its own asset so the in-app updater can verify
+          # the download without scraping the release notes.
+          printf '%s  %s\n' "$SHA" "$DMG" > "$DMG.sha256"
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
@@ -81,7 +84,7 @@ jobs:
 
           \`sha256: $SHA\`
           EOF
-          gh release create "$GITHUB_REF_NAME" "$DMG" \
+          gh release create "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" \
             --title "Kompass $GITHUB_REF_NAME" \
             --notes-file notes.md
 

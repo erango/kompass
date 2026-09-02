@@ -300,6 +300,9 @@ const EXTRA_CSS: &str = r#"
   font-variant-numeric: tabular-nums;
 }
 .update-banner .ub-btn svg { width: 14px; height: 14px; }
+/* Inline status while an update installs (or the reason it didn't). */
+.update-banner .ub-note { font-size: var(--text-micro); color: var(--fg-muted); }
+.update-banner .ub-note.bad { color: var(--status-failed); }
 .update-banner .ub-btn:hover { border-color: var(--accent); color: var(--accent-fg); }
 .update-banner .ub-btn.ghost { background: transparent; border-color: transparent; color: var(--fg-muted); }
 .update-banner .ub-btn.ghost:hover { color: var(--fg-default); }
@@ -1139,6 +1142,143 @@ fn installed_via_brew() -> bool {
         .unwrap_or(false)
 }
 
+// ---------------------------------------------------------------------------
+// In-app update. Two install shapes: a Homebrew cask (let brew do it, so its
+// manifest stays in sync) and a plain .app from the dmg (download + verify +
+// swap ourselves). The app is unsigned, so the published sha256 over HTTPS is
+// the integrity check — never install an archive whose digest doesn't match.
+// ---------------------------------------------------------------------------
+
+/// The running `.app` bundle (…/Kompass.app), or None when run unbundled.
+fn app_bundle_path() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    // …/Kompass.app/Contents/MacOS/Kompass → up three.
+    let bundle = exe.parent()?.parent()?.parent()?;
+    (bundle.extension()? == "app").then(|| bundle.to_path_buf())
+}
+
+/// Pick the dmg asset and its `.sha256` sidecar out of a GitHub release JSON.
+fn release_assets(v: &serde_json::Value) -> Option<(String, Option<String>)> {
+    let assets = v["assets"].as_array()?;
+    let url_of = |name_ends: &str| -> Option<String> {
+        assets
+            .iter()
+            .find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(name_ends)))
+            .and_then(|a| a["browser_download_url"].as_str())
+            .map(String::from)
+    };
+    let dmg = url_of(".dmg")?;
+    Some((dmg, url_of(".dmg.sha256")))
+}
+
+/// First 64-hex token in a `shasum`/`*.sha256` style line.
+fn parse_sha256(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .find(|t| t.len() == 64 && t.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|t| t.to_ascii_lowercase())
+}
+
+fn curl_text(url: &str) -> Option<String> {
+    let out = std::process::Command::new("curl").args(["-fsSL", url]).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("{cmd}: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let msg = err.lines().last().unwrap_or("failed").trim().to_string();
+        Err(if msg.is_empty() { format!("{cmd} failed") } else { msg })
+    }
+}
+
+/// Download the latest dmg, verify its sha256, and stage the new bundle.
+/// Returns the staged `Kompass.app` to swap in.
+fn download_and_stage() -> Result<std::path::PathBuf, String> {
+    let body = curl_text("https://api.github.com/repos/erango/kompass/releases/latest")
+        .ok_or("couldn't reach GitHub")?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|_| "bad release response".to_string())?;
+    let (dmg_url, sha_url) = release_assets(&json).ok_or("release has no .dmg asset")?;
+
+    let dir = std::env::temp_dir().join("kompass-update");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dmg = dir.join("Kompass.dmg");
+
+    run("curl", &["-fsSL", "-o", &dmg.to_string_lossy(), &dmg_url])?;
+
+    // Integrity gate: the app is unsigned, so a digest mismatch is the only
+    // signal we have that the download isn't what we published. Refuse to go on.
+    let sha_url = sha_url.ok_or("release has no .dmg.sha256 asset")?;
+    let expected = curl_text(&sha_url)
+        .as_deref()
+        .and_then(parse_sha256)
+        .ok_or("couldn't read published sha256")?;
+    let got = run("shasum", &["-a", "256", &dmg.to_string_lossy()])?;
+    let got = parse_sha256(&got).ok_or("couldn't hash download")?;
+    if got != expected {
+        return Err("checksum mismatch — update refused".into());
+    }
+
+    let mnt = dir.join("mnt");
+    std::fs::create_dir_all(&mnt).map_err(|e| e.to_string())?;
+    run(
+        "hdiutil",
+        &["attach", &dmg.to_string_lossy(), "-nobrowse", "-readonly", "-mountpoint", &mnt.to_string_lossy()],
+    )?;
+    let staged = dir.join("Kompass.app");
+    let copy = run("ditto", &[&mnt.join("Kompass.app").to_string_lossy(), &staged.to_string_lossy()]);
+    let _ = run("hdiutil", &["detach", &mnt.to_string_lossy(), "-quiet"]);
+    copy?;
+    // The dmg came from the internet, so the copy carries a quarantine flag;
+    // strip it or the swapped-in build trips Gatekeeper on next launch.
+    let _ = run("xattr", &["-dr", "com.apple.quarantine", &staged.to_string_lossy()]);
+    Ok(staged)
+}
+
+/// Let Homebrew do the upgrade so the cask manifest stays correct.
+fn brew_upgrade() -> Result<(), String> {
+    run("brew", &["upgrade", "--cask", "kompass"]).map(|_| ())
+}
+
+/// Hand off to a detached helper: wait for us to exit, swap the bundle (when a
+/// staged one is given), then relaunch. We can't overwrite our own running
+/// bundle, hence the helper.
+fn finish_update_and_relaunch(staged: Option<std::path::PathBuf>) -> Result<(), String> {
+    let target = app_bundle_path().ok_or("not running from a .app bundle")?;
+    // Guard the rm -rf below: only ever a *.app under a real parent.
+    if target.extension().map(|e| e != "app").unwrap_or(true) || target.parent().is_none() {
+        return Err("unexpected bundle path".into());
+    }
+    let pid = std::process::id();
+    let t = target.to_string_lossy().to_string();
+    let swap = match &staged {
+        Some(s) => format!(
+            "rm -rf \"{t}\" || exit 1\n/usr/bin/ditto \"{s}\" \"{t}\" || exit 1\n",
+            s = s.to_string_lossy()
+        ),
+        None => String::new(), // brew already replaced it on disk
+    };
+    let script = format!(
+        "#!/bin/sh\nwhile kill -0 {pid} 2>/dev/null; do sleep 0.2; done\n{swap}\
+         /usr/bin/xattr -dr com.apple.quarantine \"{t}\" 2>/dev/null\n\
+         /usr/bin/open \"{t}\"\n"
+    );
+    let path = std::env::temp_dir().join("kompass-finish-update.sh");
+    std::fs::write(&path, script).map_err(|e| e.to_string())?;
+    std::process::Command::new("/bin/sh")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn icon(id: &str, stroke_width: &str) -> Element {
     let inner = format!("<use href=\"#{id}\"/>");
     rsx! {
@@ -1518,6 +1658,9 @@ fn App() -> Element {
     let mut update_dismissed = use_signal(|| false);
     let mut checking_update = use_signal(|| false);
     let mut update_checked = use_signal(|| false); // ≥1 check has completed
+    // In-app update: busy flag + last status line (ok?, message).
+    let mut update_busy = use_signal(|| false);
+    let mut update_note = use_signal(|| None::<(bool, String)>);
 
     // Run a release check (GitHub API), refreshing the signals. Re-shows the
     // banner when the available version changes. Reused by the daily loop and
@@ -1557,6 +1700,41 @@ fn App() -> Element {
             loop {
                 check_update.call(());
                 tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
+            }
+        });
+    });
+
+    // Install the update in place. Homebrew installs go through brew (keeps the
+    // cask manifest in sync); dmg installs download + verify + swap ourselves.
+    // Either way a detached helper relaunches us once we exit.
+    let do_update = use_callback(move |via_brew: bool| {
+        if *update_busy.peek() {
+            return;
+        }
+        spawn(async move {
+            update_busy.set(true);
+            update_note.set(Some((true, if via_brew { "Upgrading via Homebrew\u{2026}" } else { "Downloading\u{2026}" }.into())));
+            let staged = tokio::task::spawn_blocking(move || {
+                if via_brew {
+                    brew_upgrade().map(|_| None)
+                } else {
+                    download_and_stage().map(Some)
+                }
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
+
+            match staged.and_then(finish_update_and_relaunch) {
+                Ok(()) => {
+                    update_note.set(Some((true, "Restarting\u{2026}".into())));
+                    // Give the helper a moment to start watching our pid.
+                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    update_note.set(Some((false, e)));
+                    update_busy.set(false);
+                }
             }
         });
     });
@@ -3533,19 +3711,23 @@ fn App() -> Element {
                     div { class: "update-banner",
                         span { class: "ub-mark", {kompass_mark("")} }
                         span { class: "ub-text", "Kompass " b { "{ver}" } " is available." }
+                        if let Some((ok, msg)) = update_note() {
+                            span { class: if ok { "ub-note" } else { "ub-note bad" }, "{msg}" }
+                        }
+                        if !update_busy() {
+                            button {
+                                class: "ub-btn",
+                                onclick: move |_| do_update.call(via_brew),
+                                {icon("i-dl", "1.7")}
+                                "Update now"
+                            }
+                        }
                         if via_brew {
                             CopyButton {
                                 text: "brew upgrade --cask kompass".to_string(),
-                                class: "ub-btn tip".to_string(),
+                                class: "ub-btn ghost tip".to_string(),
                                 tip: "Copy to clipboard".to_string(),
                                 label: "brew upgrade".to_string(),
-                            }
-                        } else {
-                            button {
-                                class: "ub-btn",
-                                onclick: move |_| open_url("https://github.com/erango/kompass/releases/latest"),
-                                {icon("i-dl", "1.7")}
-                                "Download"
                             }
                         }
                         button {
@@ -5690,6 +5872,33 @@ fn SkeletonTable() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_sha256_picks_the_digest() {
+        let d = "a".repeat(64);
+        assert_eq!(parse_sha256(&format!("{d}  Kompass-1.0.0.dmg")), Some(d.clone()));
+        assert_eq!(parse_sha256(&format!("SHA256({d})")), None); // not whitespace-separated
+        assert_eq!(parse_sha256("deadbeef  short"), None);
+        // uppercase is normalised
+        assert_eq!(parse_sha256(&"A".repeat(64)), Some("a".repeat(64)));
+    }
+
+    #[test]
+    fn release_assets_picks_dmg_and_sidecar() {
+        let v = serde_json::json!({"assets": [
+            {"name": "Kompass-1.0.0.dmg.sha256", "browser_download_url": "u/sha"},
+            {"name": "Kompass-1.0.0.dmg", "browser_download_url": "u/dmg"},
+        ]});
+        assert_eq!(release_assets(&v), Some(("u/dmg".into(), Some("u/sha".into()))));
+
+        // dmg without a sidecar → still found, sha is None
+        let v2 = serde_json::json!({"assets": [
+            {"name": "Kompass-1.0.0.dmg", "browser_download_url": "u/dmg"}
+        ]});
+        assert_eq!(release_assets(&v2), Some(("u/dmg".into(), None)));
+
+        assert_eq!(release_assets(&serde_json::json!({"assets": []})), None);
+    }
 
     #[test]
     fn ansi_strip_removes_codes() {
