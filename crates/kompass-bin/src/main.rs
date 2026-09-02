@@ -718,8 +718,24 @@ fn main() {
         window = window.with_window_icon(Some(icon));
     }
 
+    // Ship the CSS in <head> so styles apply on the first paint. Injecting it as
+    // an element inside the render tree instead let the webview paint the raw
+    // markup for a frame — unstyled SVGs fall back to the 300x150 replaced-element
+    // default, which showed as a giant compass mark on a bare background.
+    let head = String::from("<style>")
+        + TOKENS_CSS + "\n" + APP_CSS + "\n" + DETAIL_CSS + "\n" + OVERLAYS_CSS + "\n"
+        + SCREENS_CSS + "\n" + CONTAINERS_CSS + "\n" + NAV_CSS + "\n" + XTERM_CSS + "\n"
+        + EXTRA_CSS + "</style>";
+
     dioxus::LaunchBuilder::desktop()
-        .with_cfg(Config::new().with_window(window))
+        .with_cfg(
+            Config::new()
+                .with_window(window)
+                .with_custom_head(head)
+                // Paint the app canvas colour instead of the default white/grey
+                // before the document exists (approx --bg-base, dark).
+                .with_background_color((17, 18, 22, 255)),
+        )
         .launch(App);
 }
 
@@ -1274,7 +1290,7 @@ fn SearchBox(
 /// `currentColor`); sized by the caller's class.
 fn kompass_mark(class: &str) -> Element {
     rsx! {
-        svg { class: "{class}", "viewBox": "0 0 32 32", fill: "none",
+        svg { class: "{class}", "viewBox": "0 0 32 32", width: "32", height: "32", fill: "none",
             path {
                 d: "M24.1 7.9 L18.6 16 L24.1 24.1 L16 18.6 L7.9 24.1 L13.4 16 L7.9 7.9 L16 13.4 Z",
                 fill: "var(--fg-muted)",
@@ -2468,7 +2484,6 @@ fn App() -> Element {
     };
 
     rsx! {
-        style { dangerous_inner_html: "{TOKENS_CSS}\n{APP_CSS}\n{DETAIL_CSS}\n{OVERLAYS_CSS}\n{SCREENS_CSS}\n{CONTAINERS_CSS}\n{NAV_CSS}\n{XTERM_CSS}\n{EXTRA_CSS}" }
         div { dangerous_inner_html: "{SPRITE}", style: "position:absolute;width:0;height:0" }
 
         div {
