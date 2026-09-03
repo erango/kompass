@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/kompass-core", "crates/kompass-bin"]
 
 [workspace.package]
-version = "1.0.18"
+version = "1.0.19"
 edition = "2021"
 license = "MIT"
 
