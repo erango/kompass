@@ -78,7 +78,9 @@ state — so the interface never blocks on the network, even mid-reconnect.
 
 ## Install (macOS)
 
-Universal build (Apple Silicon + Intel).
+Universal build (Apple Silicon + Intel), signed with a Developer ID and
+notarized by Apple — it opens without Gatekeeper warnings. Kompass checks for
+new releases and can update itself in place.
 
 ```sh
 brew install --cask erango/tap/kompass
@@ -86,12 +88,6 @@ brew install --cask erango/tap/kompass
 
 Or grab the `.dmg` from the [latest release](https://github.com/erango/kompass/releases/latest)
 and drag **Kompass** into Applications.
-
-> The build is **unsigned**, so on first launch macOS will warn. Either
-> right-click the app → **Open**, or run:
-> ```sh
-> xattr -dr com.apple.quarantine /Applications/Kompass.app
-> ```
 
 ## Build & run
 
