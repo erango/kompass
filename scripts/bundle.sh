@@ -74,9 +74,19 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-# Ad-hoc sign so the bundle is self-consistent (still "unidentified developer"
-# on other Macs; real distribution needs a Developer ID cert + notarization).
-codesign --force --deep --sign - "$APP" 2>/dev/null && echo "==> ad-hoc signed" || echo "==> codesign skipped"
+# Signing. With KOMPASS_SIGN_IDENTITY set (a "Developer ID Application: …"
+# identity in the keychain) sign for distribution: hardened runtime + secure
+# timestamp, both required for notarization (see scripts/notarize.sh).
+# Otherwise ad-hoc sign so the bundle is at least self-consistent locally.
+if [ -n "${KOMPASS_SIGN_IDENTITY:-}" ]; then
+  codesign --force --options runtime --timestamp \
+    --entitlements "$ROOT/scripts/Kompass.entitlements" \
+    --sign "$KOMPASS_SIGN_IDENTITY" "$APP"
+  codesign --verify --strict --verbose=2 "$APP"
+  echo "==> signed: $KOMPASS_SIGN_IDENTITY"
+else
+  codesign --force --deep --sign - "$APP" 2>/dev/null && echo "==> ad-hoc signed" || echo "==> codesign skipped"
+fi
 
 touch "$APP"  # nudge the icon cache
 echo "==> done: $APP"

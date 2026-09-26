@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the Developer ID build.
+  Intentionally empty: Kompass is not sandboxed, the WKWebView JIT runs in
+  WebKit's own process, and child processes (kubectl, aws/gcloud exec auth
+  plugins) are separate binaries — none of that needs a runtime exception.
+  Add keys here only when a concrete hardened-runtime failure demands one.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

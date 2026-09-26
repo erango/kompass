@@ -86,10 +86,18 @@ Free, unsigned, macOS-first. **GitHub Releases + a Homebrew tap.**
   the cask's `version`/`sha256` after publishing — requires a repo secret
   `TAP_TOKEN` (a PAT with `contents:write` on `erango/homebrew-tap`). Without it,
   the bump step is skipped and the cask must be updated by hand.
-- **Unsigned:** no Apple Developer ID, so Gatekeeper warns on first launch
-  (right-click → Open, or `xattr -dr com.apple.quarantine`). Homebrew does **not**
-  strip quarantine. To remove the warning later: enroll in Apple Developer
-  ($99/yr) and add codesign + notarization (signing secrets) to the workflow.
+- **Signing + notarization:** Developer ID, driven by repo secrets. The release
+  workflow imports the cert into a temp keychain, `bundle.sh` signs with the
+  hardened runtime (`KOMPASS_SIGN_IDENTITY`, entitlements in
+  `scripts/Kompass.entitlements`), then `scripts/notarize.sh` notarizes + staples
+  the `.app`, and again the signed `.dmg` (sha256 is taken *after* stapling).
+  Secrets: `MACOS_CERT_P12` (base64 .p12), `MACOS_CERT_PASSWORD`,
+  `MACOS_SIGN_IDENTITY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`,
+  `APPLE_API_KEY_P8` (App Store Connect API key). Without `MACOS_CERT_P12` the
+  job builds **unsigned** as before (Gatekeeper warns; release notes say so).
+  Local: `KOMPASS_SIGN_IDENTITY="Developer ID Application: …" ./scripts/bundle.sh`
+  then `KOMPASS_NOTARY_PROFILE=<profile> ./scripts/notarize.sh dist/Kompass.app`
+  (profile from `xcrun notarytool store-credentials`).
 - **Platforms:** macOS only for now. Linux (webkit2gtk + AppImage) and Windows
   are untested and deferred.
 - **Screenshots for docs:** never use real clusters (leaks infra names). Spin up
