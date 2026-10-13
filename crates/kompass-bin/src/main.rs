@@ -1528,6 +1528,14 @@ fn App() -> Element {
 
     let mut ns_open = use_signal(|| false);
     let mut ns_query = use_signal(String::new);
+    // Re-list namespaces whenever the picker opens, so ones created since
+    // connect are findable without restarting. (Typing re-fetches too, below.)
+    use_effect(move || {
+        if ns_open() {
+            send_cmd(Cmd::RefreshNamespaces);
+        }
+    });
+    let mut ns_fetch_gen = use_signal(|| 0u64);
     let mut ns_hl = use_signal(|| 0usize);
     // Namespace views remembered per cluster (persisted), so switching clusters
     // — and restarts — restore each cluster's views.
@@ -2822,7 +2830,20 @@ fn App() -> Element {
                                                                 "autocorrect": "off",
                                                                 value: "{ns_query}",
                                                                 onmounted: move |e| { let _ = e.set_focus(true); },
-                                                                oninput: move |e| { ns_query.set(e.value()); ns_hl.set(0); },
+                                                                oninput: move |e| {
+                                                                    ns_query.set(e.value());
+                                                                    ns_hl.set(0);
+                                                                    // Debounced re-list while searching: a namespace
+                                                                    // created after the picker opened still turns up.
+                                                                    let g = *ns_fetch_gen.peek() + 1;
+                                                                    ns_fetch_gen.set(g);
+                                                                    spawn(async move {
+                                                                        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                                                                        if *ns_fetch_gen.peek() == g {
+                                                                            send_cmd(Cmd::RefreshNamespaces);
+                                                                        }
+                                                                    });
+                                                                },
                                                                 onkeydown: move |e| {
                                                                     let len = matches_kd.len();
                                                                     match e.key() {

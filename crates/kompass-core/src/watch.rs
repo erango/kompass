@@ -132,6 +132,7 @@ pub async fn run_engine(tx: UnboundedSender<Delta>, mut cmd_rx: UnboundedReceive
                     watch_task = start_watch(&client, &tx, &registry, &active, &ctx_name, &scope_ns.clone().or_else(|| view_ns.clone()));
                 }
             }
+            Cmd::RefreshNamespaces => refresh_namespaces(&client, &tx, &scope_ns),
             Cmd::Reconnect => {
                 if let Some(h) = watch_task.take() {
                     h.abort();

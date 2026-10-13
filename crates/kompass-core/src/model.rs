@@ -525,6 +525,10 @@ pub enum Cmd {
     /// refreshes its own local client; this refreshes the engine's shared one,
     /// matching what relaunching the app does.
     Reconnect,
+    /// Re-list the cluster's namespaces (emits `Delta::Namespaces`). Sent when
+    /// the namespace picker opens or is searched, so namespaces created after
+    /// connect show up without a restart.
+    RefreshNamespaces,
     /// Fetch the pods owned by a controller (Deployment/StatefulSet/…) for its
     /// detail panel.
     FetchControllerPods { kind_id: String, namespace: String, name: String },
