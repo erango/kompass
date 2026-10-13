@@ -86,7 +86,13 @@ jobs:
           cp -R dist/Kompass.app "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           DMG="Kompass-${VER}.dmg"
-          hdiutil create -volname "Kompass" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          # hdiutil intermittently fails with "Resource busy" on GitHub's macOS
+          # runners (something still has the staged files open) — retry.
+          for i in 1 2 3 4 5; do
+            hdiutil create -volname "Kompass" -srcfolder "$STAGE" -ov -format UDZO "$DMG" && break
+            [ "$i" = 5 ] && exit 1
+            echo "hdiutil create failed (attempt $i), retrying…"; sleep $((i * 5))
+          done
           if [ "${{ steps.sign.outputs.enabled }}" = "true" ]; then
             codesign --force --timestamp --sign "$KOMPASS_SIGN_IDENTITY" "$DMG"
             ./scripts/notarize.sh "$DMG"
