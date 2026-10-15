@@ -1666,6 +1666,8 @@ fn App() -> Element {
     let mut update_dismissed = use_signal(|| false);
     let mut checking_update = use_signal(|| false);
     let mut update_checked = use_signal(|| false); // ≥1 check has completed
+    // When the last release check started — gates the on-focus re-check.
+    let mut last_update_check = use_signal(|| None::<std::time::Instant>);
     // In-app update: busy flag + last status line (ok?, message).
     let mut update_busy = use_signal(|| false);
     let mut update_note = use_signal(|| None::<(bool, String)>);
@@ -1679,6 +1681,7 @@ fn App() -> Element {
         }
         spawn(async move {
             checking_update.set(true);
+            last_update_check.set(Some(std::time::Instant::now()));
             let found = tokio::task::spawn_blocking(|| {
                 let tag = latest_release_tag()?;
                 is_newer(&tag, env!("CARGO_PKG_VERSION"))
@@ -1708,6 +1711,26 @@ fn App() -> Element {
             loop {
                 check_update.call(());
                 tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
+            }
+        });
+    });
+
+    // Also re-check when the window regains focus, at most once an hour (any
+    // check — startup, daily, About, or a previous focus — resets the clock).
+    // Catches releases for long-running sessions without polling GitHub.
+    use_hook(move || {
+        spawn(async move {
+            let mut eval = dioxus::document::eval(
+                "window.addEventListener('focus', function(){ dioxus.send(true); });",
+            );
+            while eval.recv::<bool>().await.is_ok() {
+                let last = *last_update_check.peek();
+                let stale = last
+                    .map(|t| t.elapsed() >= std::time::Duration::from_secs(60 * 60))
+                    .unwrap_or(true);
+                if stale {
+                    check_update.call(());
+                }
             }
         });
     });
