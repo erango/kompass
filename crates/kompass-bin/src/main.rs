@@ -1252,9 +1252,20 @@ fn download_and_stage() -> Result<std::path::PathBuf, String> {
     Ok(staged)
 }
 
-/// Let Homebrew do the upgrade so the cask manifest stays correct.
-fn brew_upgrade() -> Result<(), String> {
-    run("brew", &["upgrade", "--cask", "kompass"]).map(|_| ())
+/// Let Homebrew do the upgrade so the cask manifest stays correct. Refresh the
+/// taps first: brew throttles its own auto-update, so a plain `upgrade` can see
+/// a stale cask, report nothing to do, and exit 0. Then confirm the cask really
+/// moved to `want` rather than relaunching the same build.
+fn brew_upgrade(want: &str) -> Result<(), String> {
+    // Best-effort: `brew update` exits non-zero when any unrelated tap is
+    // broken, even after it refreshed ours. The version check below decides.
+    let _ = run("brew", &["update", "--quiet"]);
+    run("brew", &["upgrade", "--cask", "kompass"])?;
+    let have = run("brew", &["list", "--cask", "--versions", "kompass"])?;
+    if have.split_whitespace().nth(1) != Some(want) {
+        return Err(format!("Homebrew didn't upgrade to {want} — try: brew upgrade --cask kompass"));
+    }
+    Ok(())
 }
 
 /// Hand off to a detached helper: wait for us to exit, swap the bundle (when a
@@ -1748,7 +1759,7 @@ fn App() -> Element {
     // Install the update in place. Homebrew installs go through brew (keeps the
     // cask manifest in sync); dmg installs download + verify + swap ourselves.
     // Either way a detached helper relaunches us once we exit.
-    let do_update = use_callback(move |via_brew: bool| {
+    let do_update = use_callback(move |(via_brew, want): (bool, String)| {
         if *update_busy.peek() {
             return;
         }
@@ -1757,7 +1768,7 @@ fn App() -> Element {
             update_note.set(Some((true, if via_brew { "Upgrading via Homebrew\u{2026}" } else { "Downloading\u{2026}" }.into())));
             let staged = tokio::task::spawn_blocking(move || {
                 if via_brew {
-                    brew_upgrade().map(|_| None)
+                    brew_upgrade(&want).map(|_| None)
                 } else {
                     download_and_stage().map(Some)
                 }
@@ -3771,7 +3782,10 @@ fn App() -> Element {
                         if !update_busy() {
                             button {
                                 class: "ub-btn",
-                                onclick: move |_| do_update.call(via_brew),
+                                onclick: {
+                                    let ver = ver.clone();
+                                    move |_| do_update.call((via_brew, ver.clone()))
+                                },
                                 {icon("i-dl", "1.7")}
                                 "Update now"
                             }
