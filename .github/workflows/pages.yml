@@ -1,0 +1,39 @@
+# Landing page (erango.github.io/kompass). Assembles site/ plus the shared
+# images from docs/ and deploys it to GitHub Pages.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "docs/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir -p _site/shots
+          cp -R site/. _site/
+          cp docs/logo.svg docs/ph/icon-1024.png _site/
+          cp docs/shots/*.png _site/shots/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

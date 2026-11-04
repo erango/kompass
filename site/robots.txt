@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://erango.github.io/kompass/sitemap.xml

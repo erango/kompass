@@ -10,6 +10,7 @@ Browse, inspect, and operate any cluster with a native, keyboard-driven UI that
 stays responsive on clusters of any size.
 
 <a href="https://www.producthunt.com/products/kompass-2?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-kompass-2" target="_blank" rel="noopener noreferrer"><img alt="Kompass - A beautiful, fast Kubernetes desktop app — built in Rust | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1164289&amp;theme=neutral&amp;t=1780669426370"></a>
+<a href="https://alternativeto.net/software/kompass-for-kubernetes/about/?utm_source=badge&amp;utm_medium=referral" target="_blank" rel="noopener noreferrer"><img alt="Kompass for Kubernetes | AlternativeTo" width="171" height="55" src="https://alternativeto.net/static/badges/badge-compact-color.svg"></a>
 
 <img src="docs/screenshot.png" alt="Kompass — Pods view with live metrics" width="900">
 
@@ -125,6 +126,10 @@ unbounded channel; the UI sends `Cmd`s back. See
 **Built with** [Rust](https://www.rust-lang.org) ·
 [Dioxus](https://dioxuslabs.com) · [kube-rs](https://kube.rs) ·
 [Tokio](https://tokio.rs) · [xterm.js](https://xtermjs.org).
+
+Like Kompass? A like on
+[AlternativeTo](https://alternativeto.net/software/kompass-for-kubernetes/about/)
+helps other people looking for a Lens alternative find it.
 
 ## License
 
