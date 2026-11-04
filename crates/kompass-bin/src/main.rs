@@ -430,6 +430,16 @@ const EXTRA_CSS: &str = r#"
 .data-btn:hover { background: var(--bg-raised); color: var(--fg-strong); }
 .data-btn svg { width: 15px; height: 15px; }
 .data-copy { margin-left: auto; }
+/* Copy-name button inline after the detail-pane title. */
+.title-copy {
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: -3px;
+  width: 22px; height: 22px; margin-left: 6px; border-radius: var(--radius-md);
+  border: 1px solid transparent; background: transparent; color: var(--fg-faint);
+  cursor: pointer; opacity: .7; transition: opacity var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
+}
+.detail-title:hover .title-copy, .title-copy.copied { opacity: 1; }
+.title-copy:hover { background: var(--bg-raised); color: var(--fg-strong); }
+.title-copy svg { width: 14px; height: 14px; }
 /* Copy button: swap copy icon → check on success, with a spring pop. */
 .copy-btn .copy-ico { display: inline-flex; align-items: center; justify-content: center; }
 .copy-btn.copied { color: var(--status-running); }
@@ -4370,7 +4380,14 @@ fn DetailPanel(
                         }
                     }
                 }
-                div { class: "detail-title", "{target.name}" }
+                div { class: "detail-title",
+                    "{target.name}"
+                    CopyButton {
+                        text: target.name.clone(),
+                        class: "title-copy tip".to_string(),
+                        tip: "Copy name".to_string(),
+                    }
+                }
                 div { class: "detail-headmeta",
                     span { class: badge_class(&target.status),
                         span { class: "dot" }
